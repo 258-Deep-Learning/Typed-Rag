@@ -1,0 +1,32 @@
+# Virtual environment
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Data files (except sample data)
+*.csv
+*.jsonl.gz
+*.jsonl.gz.part*
+
+# Indexes (can be rebuilt)
+indexes/*.pkl
+indexes/*.flatip
+indexes/faiss_*/
+
+# Keep these important files
+!requirements.txt
+!data/passages.jsonl
+!indexes/meta.jsonl
+!indexes/faiss_bge_small/meta.jsonl
+!indexes/faiss_bge_small/model.txt
+
+# IDE and system files
+.DS_Store
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
