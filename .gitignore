@@ -35,3 +35,5 @@ indexes/bm25_rank.pkl
 indexes/faiss_bge_small/index.flatip
 indexes/faiss_bge_small/meta.jsonl
 indexes/faiss_bge_small/model.txt
+
+.env
