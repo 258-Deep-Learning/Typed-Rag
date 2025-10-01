@@ -1,8 +1,21 @@
-# Typed-RAG: Type-Aware Decomposition for Retrieval-Augmented Generation
+# Typed-RAG: Multi-Backend Retrieval-Augmented Generation
 
-A hybrid retrieval system combining BM25 (keyword-based) and dense vector search (semantic) for robust document retrieval. This implementation uses pure Python libraries optimized for Apple Silicon and avoids problematic dependencies like Pyserini.
+A flexible hybrid retrieval system with **pluggable vector database backends**. Supports local FAISS, Pinecone, Qdrant, and Weaviate. Works with Wikipedia data or your own custom documents.
+
+**🆕 Version 2.0 - Multi-Backend Support Released!** See [WHATS_NEW.md](WHATS_NEW.md) for details.
+
+## ✨ Key Features
+
+- 🔄 **Multi-Backend Support**: Choose FAISS, Pinecone, Qdrant, or Weaviate at runtime
+- 📚 **Custom Documents**: Use your own documents alongside or instead of Wikipedia
+- 🎯 **Hybrid Search**: Combines BM25 (keyword) + Vector (semantic) search
+- ⚡ **Fast**: 150-250ms query latency with local FAISS
+- 🍎 **Apple Silicon Optimized**: Pure Python, no C++ compilation issues
+- 🔌 **Backward Compatible**: All original scripts still work
 
 ## 🚀 Quick Start
+
+### Option 1: Wikipedia + Local FAISS (Default)
 
 ```bash
 # 1. Setup environment
@@ -10,12 +23,40 @@ python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# 2. Build indexes from your corpus
+# 2. Build indexes (if not already built)
 python scripts/build_bm25.py --input data/passages.jsonl
 python scripts/build_faiss.py --input data/passages.jsonl
 
 # 3. Query the system
-python scripts/query.py --q "your question here" --k 5 --mode hybrid
+python scripts/query_multi.py --q "Who discovered penicillin?" --k 5 --mode hybrid
+```
+
+### Option 2: Your Own Documents
+
+```bash
+# 1. Convert your documents
+python scripts/convert_txt_to_jsonl.py --input-dir my_documents/ --output data/my_docs.jsonl
+
+# 2. Build indexes
+python scripts/build_bm25.py --input data/my_docs.jsonl --out indexes/custom/bm25_rank.pkl --meta-out indexes/custom/meta.jsonl
+python scripts/build_faiss.py --input data/my_docs.jsonl --index-dir indexes/custom/faiss_bge_small
+
+# 3. Query your documents
+python scripts/query_multi.py --q "your question" --index-dir indexes/custom
+```
+
+### Option 3: Use Pinecone (Cloud Vector Database)
+
+```bash
+# 1. Set credentials
+export PINECONE_API_KEY="your-key"
+export PINECONE_ENVIRONMENT="us-west1-gcp"
+
+# 2. Upload to Pinecone
+python scripts/build_pinecone.py --input data/passages.jsonl --index-name typed-rag
+
+# 3. Query with Pinecone
+python scripts/query_multi.py --q "your question" --backend pinecone
 ```
 
 ## 📋 Table of Contents
@@ -25,6 +66,7 @@ python scripts/query.py --q "your question here" --k 5 --mode hybrid
 - [Usage](#usage)
 - [Components](#components)
 - [File Structure](#file-structure)
+- [Documentation](#documentation)
 - [Development Notes](#development-notes)
 
 ## 🏗️ System Architecture
@@ -260,6 +302,50 @@ python scripts/healthcheck.py
 - Adjust `batch_size` in `build_faiss.py`
 - Consider using `IndexIVFFlat` instead of `IndexFlatIP` for >100k docs
 
+## 📚 Documentation
+
+### Getting Started
+
+- **[EXECUTION_GUIDE.md](EXECUTION_GUIDE.md)** - **Start here!** Complete guide to running the system
+  - Wikipedia + FAISS setup
+  - Custom documents workflow
+  - Backend selection guide
+  - Complete command reference
+  - Troubleshooting
+
+- **[WHATS_NEW.md](WHATS_NEW.md)** - Version 2.0 release notes
+  - What's new in multi-backend support
+  - Migration guide
+  - Usage examples
+
+- **[QUICKSTART_CUSTOM_DOCS.md](QUICKSTART_CUSTOM_DOCS.md)** - 5-minute quick start for custom documents
+
+### Advanced Topics
+
+- **[CUSTOM_DOCUMENTS_GUIDE.md](CUSTOM_DOCUMENTS_GUIDE.md)** - Complete guide for using your own documents
+  - Format requirements
+  - Conversion scripts (text, PDF, CSV)
+  - Chunking best practices
+  - Real-world use cases
+
+- **[VECTOR_DATABASE_GUIDE.md](VECTOR_DATABASE_GUIDE.md)** - Vector database integration
+  - When to use vector databases
+  - Full Pinecone integration code
+  - Qdrant, Weaviate, Milvus examples
+  - Performance comparisons
+
+- **[CUSTOMIZATION_SUMMARY.md](CUSTOMIZATION_SUMMARY.md)** - Quick reference for customization options
+
+### Development History
+
+- **[weekend1.md](weekend1.md)** - Weekend 1 implementation log
+  - System implementation journey
+  - Performance benchmarks
+  - Evaluation results
+
+- **[DEV_SET_DOCUMENTATION.md](DEV_SET_DOCUMENTATION.md)** - Development set creation
+- **[WIKIPEDIA_MIGRATION_DOCS.md](WIKIPEDIA_MIGRATION_DOCS.md)** - Dataset migration notes
+
 ## 📝 Development Notes
 
 - **No Conda**: Using pure Python virtual environments for simplicity
@@ -267,6 +353,7 @@ python scripts/healthcheck.py
 - **Pure Python BM25**: Avoids C++ compilation issues
 - **Normalized Embeddings**: Using cosine similarity via inner product
 - **Z-score Combination**: Robust score fusion across different scales
+- **Pluggable Backends**: Runtime selection of vector databases
 
 ## 🤝 Contributing
 
