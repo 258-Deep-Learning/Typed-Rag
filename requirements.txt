@@ -1,17 +1,28 @@
-faiss-cpu>=1.8.0
-transformers>=4.41.0
-accelerate>=0.31.0
-datasets>=2.20.0
-sentencepiece>=0.2.0
-peft>=0.11.0
-pydantic>=2.7.0
-typer>=0.12.0
-tyro>=0.8.5
-fastapi>=0.111.0
-uvicorn[standard]>=0.30.0
-streamlit>=1.36.0
-structlog>=24.1.0
-scikit-learn>=1.5.0
-rank-bm25>=0.2.2
-sentence-transformers>=3.0.0
-joblib>=1.4.2
+# Core dependencies for Typed-RAG Weekend 1
+pyserini>=0.22.0
+pinecone[grpc]>=5.0.0
+transformers>=4.35.0
+sentencepiece>=0.1.99
+datasets>=2.14.0
+faiss-cpu>=1.7.4
+tyro>=0.5.0
+typer>=0.9.0
+structlog>=23.1.0
+
+# Core ML
+torch>=2.0.0
+numpy>=1.24.0
+
+# Optional: Better embedding performance
+sentence-transformers>=2.2.2
+
+# Document parsing (recommended - uncomment to install)
+PyPDF2>=3.0.0          # For PDF support
+python-docx>=0.8.11    # For DOCX support
+beautifulsoup4>=4.12.0 # For HTML support
+lxml>=4.9.0            # For better HTML parsing
+
+# LLM APIs
+google-generativeai>=0.3.0  # For Gemini (Recommended)
+openai>=1.0.0               # For OpenAI (Alternative)
+
