@@ -1,372 +1,327 @@
-# Typed-RAG: Multi-Backend Retrieval-Augmented Generation
+# Typed-RAG: Weekend 1 Implementation
 
-A flexible hybrid retrieval system with **pluggable vector database backends**. Supports local FAISS, Pinecone, Qdrant, and Weaviate. Works with Wikipedia data or your own custom documents.
+A production-ready RAG (Retrieval-Augmented Generation) system using **Pinecone** for vector search and **BM25** for lexical search, with hybrid fusion for optimal retrieval quality.
 
-**🆕 Version 2.0 - Multi-Backend Support Released!** See [WHATS_NEW.md](WHATS_NEW.md) for details.
+This is **Weekend 1** of the Typed-RAG project: building the foundational retrieval pipeline with your own documents.
 
-## ✨ Key Features
+## 🎯 What This Does
 
-- 🔄 **Multi-Backend Support**: Choose FAISS, Pinecone, Qdrant, or Weaviate at runtime
-- 📚 **Custom Documents**: Use your own documents alongside or instead of Wikipedia
-- 🎯 **Hybrid Search**: Combines BM25 (keyword) + Vector (semantic) search
-- ⚡ **Fast**: 150-250ms query latency with local FAISS
-- 🍎 **Apple Silicon Optimized**: Pure Python, no C++ compilation issues
-- 🔌 **Backward Compatible**: All original scripts still work
+- **Ingest** documents (PDF, DOCX, MD, TXT, HTML) and chunk them into 200-token segments
+- **Index** with both BM25 (Pyserini/Lucene) and dense vectors (Pinecone + BGE embeddings)
+- **Retrieve** using hybrid search (z-score fusion)
+- **Generate** dev set questions from your documents
+- **Run baselines**: LLM-only and Vanilla RAG
+
+## 📋 Prerequisites
+
+- Python 3.11+
+- Pinecone account (free tier works)
+- Google API key for Gemini (recommended - fast & cost-effective) OR OpenAI API key
 
 ## 🚀 Quick Start
 
-### Option 1: Wikipedia + Local FAISS (Default)
+### 1. Install Dependencies
 
 ```bash
-# 1. Setup environment
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+cd Typed-Rag
+source venv/bin/activate  # Activate your virtual environment
 
-# 2. Build indexes (if not already built)
-python scripts/build_bm25.py --input data/passages.jsonl
-python scripts/build_faiss.py --input data/passages.jsonl
+# Dependencies already installed:
+# pip3 install pyserini pinecone-client transformers sentencepiece datasets faiss-cpu tyro typer structlog
 
-# 3. Query the system
-python scripts/query_multi.py --q "Who discovered penicillin?" --k 5 --mode hybrid
+# Optional (for better PDF/DOCX/HTML parsing):
+pip3 install PyPDF2 python-docx beautifulsoup4
 ```
 
-### Option 2: Your Own Documents
+### 2. Set Up Environment Variables
 
 ```bash
-# 1. Convert your documents
-python scripts/convert_txt_to_jsonl.py --input-dir my_documents/ --output data/my_docs.jsonl
+# Add your API keys (choose Gemini OR OpenAI)
+export PINECONE_API_KEY="your-pinecone-api-key"
 
-# 2. Build indexes
-python scripts/build_bm25.py --input data/my_docs.jsonl --out indexes/custom/bm25_rank.pkl --meta-out indexes/custom/meta.jsonl
-python scripts/build_faiss.py --input data/my_docs.jsonl --index-dir indexes/custom/faiss_bge_small
+# Option 1: Google Gemini (Recommended - Fast & Cost-effective)
+export GOOGLE_API_KEY="your-google-api-key"
 
-# 3. Query your documents
-python scripts/query_multi.py --q "your question" --index-dir indexes/custom
+# Option 2: OpenAI (Alternative)
+# export OPENAI_API_KEY="your-openai-api-key"
 ```
 
-### Option 3: Use Pinecone (Cloud Vector Database)
+Get your Gemini API key at: https://aistudio.google.com/app/apikey
+
+### 3. Prepare Your Documents
+
+Create a folder with your documents (PDF, DOCX, MD, TXT, HTML):
 
 ```bash
-# 1. Set credentials
-export PINECONE_API_KEY="your-key"
-export PINECONE_ENVIRONMENT="us-west1-gcp"
-
-# 2. Upload to Pinecone
-python scripts/build_pinecone.py --input data/passages.jsonl --index-name typed-rag
-
-# 3. Query with Pinecone
-python scripts/query_multi.py --q "your question" --backend pinecone
+mkdir -p my_documents
+# Add your documents to my_documents/
 ```
 
-## 📋 Table of Contents
+### 4. Run the Pipeline
 
-- [System Architecture](#system-architecture)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Components](#components)
-- [File Structure](#file-structure)
-- [Documentation](#documentation)
-- [Development Notes](#development-notes)
-
-## 🏗️ System Architecture
-
-```
-        ┌──────────────┐
-        │passages.jsonl│   (your corpus)
-        └──────┬───────┘
-               │
-     ┌─────────▼─────────┐             ┌─────────────────────────┐
-     │ build_bm25.py      │            │ build_faiss.py          │
-     │  tokenize & cache  │            │  embed & index vectors  │
-     └──────┬─────────────┘            └──────────┬──────────────┘
-            │                                      │
-  bm25_rank.pkl + meta.jsonl              faiss/index.flatip + meta.jsonl
-            │                                      │
-            └───────────────┬──────────────────────┘
-                            │
-                  ┌─────────▼─────────┐
-                  │ HybridRetriever   │  ← hybrid = z(BM25) + z(Vector)
-                  └─────────┬─────────┘
-                            │
-                       top-k docs
-                            │
-                  (next: feed to an LLM)
-```
-
-### Key Components:
-- **BM25**: Classic keyword scoring for exact term matches
-- **Vector Search**: Semantic similarity using BGE-small embeddings
-- **Hybrid Scoring**: Z-score normalization + combination for robust retrieval
-- **FAISS**: Fast approximate nearest neighbor search for vectors
-
-## 🛠️ Installation
-
-### Prerequisites
-- Python 3.11+ 
-- Java 17+ (for some optional dependencies)
-- macOS with Apple Silicon support
-
-### Step-by-Step Setup
-
-1. **Install Python 3.11**
-   ```bash
-   brew install python@3.11
-   ```
-
-2. **Create Virtual Environment**
-   ```bash
-   python3.11 -m venv .venv
-   source .venv/bin/activate
-   ```
-
-3. **Upgrade Build Tools**
-   ```bash
-   python -m pip install --upgrade pip wheel setuptools
-   ```
-
-4. **Set Java Environment** (if needed)
-   ```bash
-   export JAVA_HOME=$(/usr/libexec/java_home -v 17)
-   echo 'export JAVA_HOME=$(/usr/libexec/java_home -v 17)' >> ~/.zshrc
-   ```
-
-5. **Install Dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-## 🎯 Usage
-
-### 1. Prepare Your Data
-
-Create `data/passages.jsonl` with your corpus. Each line should be a JSON object:
-
-```json
-{"id":"doc_001","title":"Document Title","url":"https://example.com","chunk_text":"Your passage text here..."}
-```
-
-### 2. Build Indexes
-
-**BM25 Index** (keyword search):
-```bash
-python scripts/build_bm25.py --input data/passages.jsonl
-# Creates: indexes/bm25_rank.pkl, indexes/meta.jsonl
-```
-
-**FAISS Index** (vector search):
-```bash
-python scripts/build_faiss.py --input data/passages.jsonl
-# Creates: indexes/faiss_bge_small/index.flatip, meta.jsonl, model.txt
-```
-
-### 3. Query the System
+#### Step 1: Ingest and Chunk Documents
 
 ```bash
-# Hybrid search (recommended)
-python scripts/query.py --q "Who discovered penicillin?" --k 3 --mode hybrid
-
-# BM25 only
-python scripts/query.py --q "penicillin discovery" --k 3 --mode bm25
-
-# Vector search only
-python scripts/query.py --q "antibiotic research" --k 3 --mode faiss
+python3 typed_rag/scripts/ingest_own_docs.py \
+  --root my_documents \
+  --out typed_rag/data/chunks.jsonl \
+  --chunk_tokens 200 \
+  --stride_tokens 60
 ```
 
-### Sample Output
-```json
-[
-  {
-    "id": "doc_001",
-    "title": "Penicillin Discovery",
-    "url": "https://en.wikipedia.org/wiki/Penicillin",
-    "chunk_text": "Penicillin was discovered by Alexander Fleming in 1928...",
-    "score": 0.85
-  }
-]
+This creates `chunks.jsonl` with 200-token chunks (60-token overlap).
+
+#### Step 2: Build BM25 Index
+
+```bash
+python3 typed_rag/scripts/build_bm25.py \
+  --in typed_rag/data/chunks.jsonl \
+  --index typed_rag/indexes/lucene_own
 ```
 
-## 🔧 Components
+#### Step 3: Build Pinecone Vector Index
 
-### Core Libraries
+```bash
+python3 typed_rag/scripts/build_pinecone.py \
+  --in typed_rag/data/chunks.jsonl \
+  --index typedrag-own \
+  --namespace own_docs
+```
 
-| Library | Purpose | Why We Use It |
-|---------|---------|---------------|
-| `rank-bm25` | Pure-Python BM25 implementation | Avoids Pyserini's nmslib issues on Apple Silicon |
-| `sentence-transformers` | Text embeddings | BGE-small-en-v1.5 for semantic similarity |
-| `faiss-cpu` | Fast vector search | Efficient similarity search at scale |
-| `joblib` | Object serialization | Caching tokenized texts for BM25 |
-| `typer` | CLI framework | Clean command-line interfaces |
+This creates a Pinecone index with 384-dim BGE embeddings.
 
-### Scripts
+#### Step 4: Generate Dev Set (100 questions)
 
-- **`build_bm25.py`**: Tokenizes passages and builds BM25 index
-- **`build_faiss.py`**: Encodes passages to vectors and builds FAISS index  
-- **`query.py`**: CLI interface for querying the hybrid retrieval system
-- **`healthcheck.py`**: System health and dependency verification
+```bash
+python3 typed_rag/scripts/make_own_dev.py \
+  --root typed_rag/data/chunks.jsonl \
+  --out typed_rag/data/dev_set.jsonl \
+  --count 100
+```
 
-### Retrieval Module
+#### Step 5: Run Baselines
 
-- **`retrieval/hybrid.py`**: Core `HybridRetriever` class with three modes:
-  - `bm25`: Keyword-based retrieval only
-  - `faiss`: Vector-based retrieval only  
-  - `hybrid`: Combined scoring with z-score normalization
+**LLM-Only Baseline** (no retrieval):
 
-## 📁 File Structure
+```bash
+python3 typed_rag/scripts/run_llm_only.py \
+  --in typed_rag/data/dev_set.jsonl \
+  --out typed_rag/runs/llm_only.jsonl \
+  --model gemini-2.0-flash-exp
+```
+
+**Vanilla RAG Baseline** (with retrieval):
+
+```bash
+python3 typed_rag/scripts/run_rag_baseline.py \
+  --in typed_rag/data/dev_set.jsonl \
+  --out typed_rag/runs/rag_baseline.jsonl \
+  --pinecone_index typedrag-own \
+  --pinecone_namespace own_docs \
+  --bm25_index typed_rag/indexes/lucene_own \
+  --k 5 \
+  --model gemini-2.0-flash-exp
+```
+
+**Alternative: Use OpenAI models** by setting `OPENAI_API_KEY` and using `--model gpt-3.5-turbo` or `--model gpt-4`
+
+## 📁 Project Structure
 
 ```
 Typed-Rag/
-├── data/
-│   └── passages.jsonl          # Input corpus (JSONL format)
-├── indexes/
-│   ├── bm25_rank.pkl          # BM25 tokenized cache
-│   ├── meta.jsonl             # Document metadata lookup
-│   └── faiss_bge_small/       # FAISS vector index
-│       ├── index.flatip       # Vector index file
-│       ├── meta.jsonl         # Metadata aligned to vectors
-│       └── model.txt          # Embedding model name
-├── retrieval/
-│   └── hybrid.py              # HybridRetriever implementation
-├── scripts/
-│   ├── build_bm25.py         # Build BM25 index
-│   ├── build_faiss.py        # Build FAISS index
-│   ├── query.py              # Query interface
-│   └── healthcheck.py        # System verification
-├── requirements.txt           # Python dependencies
-└── README.md                 # This file
+├── typed_rag/
+│   ├── data/                    # Raw and processed data
+│   │   ├── chunks.jsonl         # Chunked documents
+│   │   └── dev_set.jsonl        # Dev set questions
+│   ├── retrieval/               # Retrieval components
+│   │   ├── __init__.py
+│   │   └── pipeline.py          # Core retrieval (Pinecone + BM25 + Hybrid)
+│   ├── scripts/                 # Executable scripts
+│   │   ├── ingest_own_docs.py   # Document ingestion & chunking
+│   │   ├── build_bm25.py        # BM25 index builder
+│   │   ├── build_pinecone.py    # Pinecone index builder
+│   │   ├── make_own_dev.py      # Dev set generator
+│   │   ├── run_llm_only.py      # LLM-only baseline
+│   │   └── run_rag_baseline.py  # RAG baseline
+│   ├── indexes/                 # Search indexes
+│   │   └── lucene_own/          # BM25 index
+│   ├── runs/                    # Experiment outputs
+│   │   ├── llm_only.jsonl
+│   │   └── rag_baseline.jsonl
+│   └── config.env.example       # Environment config template
+├── venv/                        # Virtual environment
+└── README.md                    # This file
 ```
 
-## 🧪 Testing
+## 🔧 Configuration
 
-### Quick Sanity Check
+### Retrieval Pipeline
 
-Create sample data and test the system:
+The retrieval pipeline (`typed_rag/retrieval/pipeline.py`) supports:
 
-```bash
-# Add 3 sample documents
-python - <<'PY'
-import json, os
-docs = [
-  {"id":"1","title":"Penicillin","url":"https://en.wikipedia.org/wiki/Penicillin",
-   "chunk_text":"Penicillin was discovered by Alexander Fleming in 1928 at St Mary's Hospital in London."},
-  {"id":"2","title":"Albert Einstein","url":"https://en.wikipedia.org/wiki/Albert_Einstein", 
-   "chunk_text":"Albert Einstein developed the theory of relativity and won the 1921 Nobel Prize in Physics."},
-  {"id":"3","title":"Basketball","url":"https://en.wikipedia.org/wiki/Basketball",
-   "chunk_text":"Basketball is a team sport where two teams try to score by shooting a ball through a hoop."}
-]
-os.makedirs("data", exist_ok=True)
-with open("data/passages.jsonl","w") as f:
-    for d in docs: f.write(json.dumps(d)+"\n")
-print("wrote 3 docs")
-PY
+- **Dense search** (Pinecone): BGE-small-en-v1.5 embeddings (384-dim, cosine similarity)
+- **Lexical search** (BM25): Pyserini with standard BM25 parameters
+- **Hybrid fusion**: Z-score normalization with stable tie-breaking
 
-# Rebuild indexes and test
-python scripts/build_bm25.py --input data/passages.jsonl
-python scripts/build_faiss.py --input data/passages.jsonl
-python scripts/query.py --q "Who discovered penicillin?" --k 3 --mode hybrid
+### Chunking Parameters
+
+- `chunk_tokens`: 200 (default) - Size of each chunk
+- `stride_tokens`: 60 (default) - Overlap between chunks
+
+### Supported Document Types
+
+- `.txt` - Plain text
+- `.md` - Markdown
+- `.pdf` - PDF (requires PyPDF2)
+- `.docx` - Word documents (requires python-docx)
+- `.html`, `.htm` - HTML (requires beautifulsoup4)
+
+## 📊 Output Format
+
+### Chunks JSONL
+
+```json
+{
+  "id": "doc123::chunk_0007",
+  "doc_id": "doc123",
+  "title": "My Document",
+  "url": "file:///path/to/doc.pdf",
+  "section": "",
+  "chunk_idx": 7,
+  "text": "...",
+  "token_len": 198,
+  "source": "internal"
+}
 ```
 
-### Health Check
+### Dev Set JSONL
 
-```bash
-python scripts/healthcheck.py
+```json
+{
+  "question_id": "doc123::q_0007",
+  "question": "What does the document say about...",
+  "type": "concept",
+  "related_doc_id": "doc123",
+  "related_chunk_id": "doc123::chunk_0007"
+}
 ```
 
-## 🎯 Next Steps (Weekend Goals)
+### Baseline Results JSONL
 
-1. **✅ Working retrieval system** with hybrid scoring
-2. **🔄 Baseline comparisons**:
-   - LLM-only (no retrieval)
-   - Vanilla RAG (question + top passages)
-3. **📊 Evaluation** on ~100 question dev set
-4. **🚀 Production features**:
-   - API endpoints
-   - Batch processing
-   - Performance monitoring
+```json
+{
+  "question_id": "doc123::q_0007",
+  "question": "What does...",
+  "prompt": "...",
+  "passages": [...],
+  "answer": "...",
+  "latency_ms": 1234,
+  "seed": 42,
+  "model": "gpt-3.5-turbo"
+}
+```
+
+## 🎯 Acceptance Criteria (Weekend 1)
+
+- ✅ `retrieve()` returns stable top-20 under fixed seed
+- ✅ Baselines complete end-to-end on 100-item dev set
+- ✅ Median top-1 latency ≤ 2s per query (laptop)
+- ✅ Every passage has title + URL/path metadata
 
 ## 🐛 Troubleshooting
 
-### Common Issues
+### Pinecone Connection Issues
 
-**Query returns nothing**: 
-- Ensure `retrieval/hybrid.py` exists and implements `HybridRetriever`
-- Check that indexes were built successfully
-- Verify your corpus has data in `data/passages.jsonl`
+```bash
+# Check your API key
+echo $PINECONE_API_KEY
 
-**Build failures on Apple Silicon**:
-- We specifically avoid Pyserini/nmslib for this reason
-- Use `faiss-cpu` instead of `faiss-gpu`
-- Ensure you're using Python 3.11+
+# List your Pinecone indexes
+python3 -c "from pinecone import Pinecone; pc = Pinecone(api_key='YOUR_KEY'); print(pc.list_indexes())"
+```
 
-**Memory issues with large corpora**:
-- Adjust `batch_size` in `build_faiss.py`
-- Consider using `IndexIVFFlat` instead of `IndexFlatIP` for >100k docs
+### BM25 Index Issues
 
-## 📚 Documentation
+Make sure Java is installed (required by Pyserini):
 
-### Getting Started
+```bash
+java -version
+```
 
-- **[EXECUTION_GUIDE.md](EXECUTION_GUIDE.md)** - **Start here!** Complete guide to running the system
-  - Wikipedia + FAISS setup
-  - Custom documents workflow
-  - Backend selection guide
-  - Complete command reference
-  - Troubleshooting
+### Embedding Model Download
 
-- **[WHATS_NEW.md](WHATS_NEW.md)** - Version 2.0 release notes
-  - What's new in multi-backend support
-  - Migration guide
-  - Usage examples
+First run will download the BGE model (~133MB). Subsequent runs use cached model.
 
-- **[QUICKSTART_CUSTOM_DOCS.md](QUICKSTART_CUSTOM_DOCS.md)** - 5-minute quick start for custom documents
+### LLM API Issues
 
-### Advanced Topics
+If no LLM API is available (Gemini or OpenAI), scripts will log warnings and return dummy responses. The pipeline still works for testing retrieval.
 
-- **[CUSTOM_DOCUMENTS_GUIDE.md](CUSTOM_DOCUMENTS_GUIDE.md)** - Complete guide for using your own documents
-  - Format requirements
-  - Conversion scripts (text, PDF, CSV)
-  - Chunking best practices
-  - Real-world use cases
+**Supported Models:**
+- **Gemini**: `gemini-2.0-flash-exp`, `gemini-1.5-flash`, `gemini-1.5-pro` (recommended)
+- **OpenAI**: `gpt-3.5-turbo`, `gpt-4`, `gpt-4-turbo`
 
-- **[VECTOR_DATABASE_GUIDE.md](VECTOR_DATABASE_GUIDE.md)** - Vector database integration
-  - When to use vector databases
-  - Full Pinecone integration code
-  - Qdrant, Weaviate, Milvus examples
-  - Performance comparisons
+## 🔮 What's Next: Weekend 2 & 3
 
-- **[CUSTOMIZATION_SUMMARY.md](CUSTOMIZATION_SUMMARY.md)** - Quick reference for customization options
+- **Weekend 2**: Typed decomposition + reranking
+  - Query decomposition by question type
+  - Cross-encoder reranking
+  - Type-aware fusion
 
-### Development History
+- **Weekend 3**: Evaluation + citations
+  - Automated answer quality metrics
+  - Citation accuracy
+  - Comparison with baselines
 
-- **[weekend1.md](weekend1.md)** - Weekend 1 implementation log
-  - System implementation journey
-  - Performance benchmarks
-  - Evaluation results
+## 📚 Key Components
 
-- **[DEV_SET_DOCUMENTATION.md](DEV_SET_DOCUMENTATION.md)** - Development set creation
-- **[WIKIPEDIA_MIGRATION_DOCS.md](WIKIPEDIA_MIGRATION_DOCS.md)** - Dataset migration notes
+### BGEEmbedder
 
-## 📝 Development Notes
+Uses `BAAI/bge-small-en-v1.5` with L2 normalization:
+- Query prefix: `"query: {text}"`
+- Passage prefix: (none)
+- Dimension: 384
+- Batch size: 64 (default)
 
-- **No Conda**: Using pure Python virtual environments for simplicity
-- **Apple Silicon Optimized**: All dependencies tested on M1/M2 Macs
-- **Pure Python BM25**: Avoids C++ compilation issues
-- **Normalized Embeddings**: Using cosine similarity via inner product
-- **Z-score Combination**: Robust score fusion across different scales
-- **Pluggable Backends**: Runtime selection of vector databases
+### PineconeDenseStore
+
+Pinecone wrapper with:
+- Serverless index creation
+- Batch upserts (200 vectors/batch)
+- Metadata filtering support
+- Cosine similarity metric
+
+### BM25Lexical
+
+Pyserini/Lucene wrapper with:
+- BM25 parameters: k1=0.9, b=0.4
+- JSON document storage
+- Metadata preservation
+
+### Hybrid Fusion
+
+Z-score normalization:
+- Normalizes dense and lexical scores
+- Combines with α (dense) and β (lexical) weights
+- Stable tie-breaking by document ID
+
+## 📝 Notes
+
+- **Determinism**: All scripts use seed=42 by default for reproducible results
+- **Metadata**: Titles and URLs are preserved throughout the pipeline for citations
+- **Scalability**: Pinecone serverless scales automatically; BM25 is local
+- **Deduplication**: Hybrid fusion automatically deduplicates by chunk ID
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+This is the foundation for Weekends 2-3. Keep the `retrieve()` contract stable and log everything for downstream components.
 
 ## 📄 License
 
-[Add your license here]
+MIT License - Feel free to use for your own projects!
 
 ---
 
-*Built with ❤️ for robust, scalable retrieval-augmented generation*
+**Questions?** Check the logs—all scripts use `structlog` for detailed logging.
+
+**Issues?** Make sure you've set up your API keys and installed optional dependencies for your document types.
+
