@@ -26,7 +26,7 @@ def load_questions(input_path: Path) -> List[Dict[str, Any]]:
     return questions
 
 
-def call_llm(question: str, model: str = "gemini-2.0-flash-exp", seed: int = 42) -> str:
+def call_llm(question: str, model: str = "gemini-2.5-flash", seed: int = 42) -> str:
     """
     Call LLM API to answer a question.
     Supports both Google Gemini and OpenAI.
@@ -82,7 +82,7 @@ def call_llm(question: str, model: str = "gemini-2.0-flash-exp", seed: int = 42)
 
 def run_baseline(
     questions: List[Dict[str, Any]],
-    model: str = "gpt-3.5-turbo",
+    model: str = "gemini-2.5-flash",
     seed: int = 42,
 ) -> List[Dict[str, Any]]:
     """Run LLM-only baseline on all questions."""
@@ -138,8 +138,8 @@ def main():
     parser = argparse.ArgumentParser(description="LLM-only baseline")
     parser.add_argument("--in", dest="input", type=str, required=True, help="Input dev set JSONL")
     parser.add_argument("--out", type=str, required=True, help="Output results JSONL")
-    parser.add_argument("--model", type=str, default="gemini-2.0-flash-exp", 
-                        help="LLM model name (gemini-2.0-flash-exp, gemini-1.5-flash, gpt-3.5-turbo, etc.)")
+    parser.add_argument("--model", type=str, default="gemini-2.5-flash", 
+                        help="LLM model name (gemini-2.5-flash, gemini-1.5-flash, gpt-3.5-turbo, etc.)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     
     args = parser.parse_args()
