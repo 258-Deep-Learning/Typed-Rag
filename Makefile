@@ -77,7 +77,7 @@ baseline-llm: setup
 	python3 typed_rag/scripts/run_llm_only.py \
 		--in $(DEV_SET_FILE) \
 		--out typed_rag/runs/llm_only.jsonl \
-		--model gemini-2.0-flash-exp
+		--model gemini-2.5-flash
 	@echo "✓ LLM-only baseline complete"
 
 baseline-rag: setup

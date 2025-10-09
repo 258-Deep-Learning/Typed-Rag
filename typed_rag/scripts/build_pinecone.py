@@ -47,10 +47,11 @@ def upsert_chunks_to_pinecone(
     ids = [r["id"] for r in chunk_records]
     texts = [r["text"] for r in chunk_records]
     
-    # Prepare metadata (exclude 'text' field to save space in Pinecone)
+    # Prepare metadata (include text field for retrieval)
     metadatas = []
     for r in chunk_records:
-        meta = {k: v for k, v in r.items() if k != "text"}
+        # Include all fields including text
+        meta = {k: v for k, v in r.items()}
         metadatas.append(meta)
     
     # Embed in batches
