@@ -9,7 +9,7 @@ echo "=============================================="
 echo ""
 
 # Build Pinecone
-echo "Step 1/3: Building Pinecone vector index..."
+echo "Step 1/4: Building Pinecone vector index..."
 python3 typed_rag/scripts/build_pinecone.py \
   --in typed_rag/data/chunks.jsonl \
   --index typedrag-own \
@@ -31,15 +31,15 @@ echo "Step 3/3: Running LLM-only baseline..."
 python3 typed_rag/scripts/run_llm_only.py \
   --in typed_rag/data/dev_set.jsonl \
   --out typed_rag/runs/llm_only.jsonl \
-  --model gemini-2.0-flash-exp
+  --model gemini-2.5-flash
 echo "✓ LLM-only baseline complete"
 echo ""
 
-echo "✅ Pipeline complete (Pinecone-only mode)!"
+echo "✅ Pipeline complete!"
 echo ""
 echo "📊 Results:"
-echo "   - typed_rag/runs/llm_only.jsonl"
+echo "   - typed_rag/runs/llm_only.jsonl (no retrieval)"
 echo ""
-echo "ℹ️  Note: Skipped BM25 and RAG baseline due to Java version issue"
-echo "   To get full hybrid search, upgrade to Java 21"
+echo "ℹ️  Note: Pinecone index built and ready for querying"
+echo "   Use ask_question.py or integrate with your own LLM setup"
 

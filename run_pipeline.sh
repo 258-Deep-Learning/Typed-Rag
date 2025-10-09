@@ -40,7 +40,7 @@ echo "  → LLM-only baseline..."
 python3 typed_rag/scripts/run_llm_only.py \
   --in typed_rag/data/dev_set.jsonl \
   --out typed_rag/runs/llm_only.jsonl \
-  --model gemini-2.0-flash-exp
+  --model gemini-2.5-flash
 
 echo "  → RAG baseline..."
 python3 typed_rag/scripts/run_rag_baseline.py \
@@ -50,7 +50,7 @@ python3 typed_rag/scripts/run_rag_baseline.py \
   --pinecone_namespace own_docs \
   --bm25_index typed_rag/indexes/lucene_own \
   --k 5 \
-  --model gemini-2.0-flash-exp
+  --model gemini-2.5-flash
 echo "✓ Baselines complete"
 echo ""
 
