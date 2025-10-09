@@ -42,7 +42,7 @@ def format_passages(docs: List[Doc]) -> str:
     return "\n\n".join(formatted)
 
 
-def call_llm_with_context(question: str, passages: str, model: str = "gemini-2.0-flash-exp", seed: int = 42) -> str:
+def call_llm_with_context(question: str, passages: str, model: str = "gemini-2.5-flash", seed: int = 42) -> str:
     """
     Call LLM API with retrieved context.
     Supports both Google Gemini and OpenAI.
@@ -104,7 +104,7 @@ def run_baseline(
     questions: List[Dict[str, Any]],
     retriever: Retriever,
     k: int = 5,
-    model: str = "gpt-3.5-turbo",
+    model: str = "gemini-2.5-flash",
     seed: int = 42,
 ) -> List[Dict[str, Any]]:
     """Run RAG baseline on all questions."""
@@ -185,8 +185,8 @@ def main():
     parser.add_argument("--pinecone_namespace", type=str, default="own_docs", help="Pinecone namespace")
     parser.add_argument("--bm25_index", type=str, default="typed_rag/indexes/lucene_own", help="BM25 index directory")
     parser.add_argument("--k", type=int, default=5, help="Number of passages to retrieve")
-    parser.add_argument("--model", type=str, default="gemini-2.0-flash-exp", 
-                        help="LLM model name (gemini-2.0-flash-exp, gemini-1.5-flash, gpt-3.5-turbo, etc.)")
+    parser.add_argument("--model", type=str, default="gemini-2.5-flash", 
+                        help="LLM model name (gemini-2.5-flash, gemini-1.5-flash, gpt-3.5-turbo, etc.)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--device", type=str, default=None, help="Device for embeddings (cuda/mps/cpu)")
     
