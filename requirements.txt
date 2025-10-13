@@ -16,6 +16,9 @@ numpy>=1.24.0
 # Optional: Better embedding performance
 sentence-transformers>=2.2.2
 
+# Lexical retrieval (BM25)
+rank-bm25>=0.2.2
+
 # Document parsing (recommended - uncomment to install)
 PyPDF2>=3.0.0          # For PDF support
 python-docx>=0.8.11    # For DOCX support
