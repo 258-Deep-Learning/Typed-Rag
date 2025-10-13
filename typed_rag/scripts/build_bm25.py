@@ -113,6 +113,9 @@ def build_bm25_from_chunks(
     chunk_meta: List[Dict[str, Any]] = []
 
     for i, obj in enumerate(chunk_records):
+        # Normalize common schema variations: treat `chunk_text` as `text` if present
+        if "text" not in obj and obj.get("chunk_text"):
+            obj = {**obj, "text": obj["chunk_text"]}
         cid = str(obj.get("id", f"row_{i}"))
         text = weighted_concat(obj, field_weights)
         if not text:
@@ -213,7 +216,7 @@ def search(
     results = []
     for i in top_idx:
         meta = chunk_meta[i]
-        preview_src = meta.get("text") or meta.get("title") or ""
+        preview_src = meta.get("text") or meta.get("chunk_text") or meta.get("title") or ""
         results.append(
             {
                 "chunk_id": chunk_ids[i],
