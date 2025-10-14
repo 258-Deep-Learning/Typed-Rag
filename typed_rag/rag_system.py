@@ -260,6 +260,47 @@ class QueryEngine:
     def __init__(self, config: RAGConfig):
         self.config = config
     
+    # ------------------------------------------------------------------
+    # Internal helpers (readability only; behavior unchanged)
+    # ------------------------------------------------------------------
+    def _get_ask_script(self) -> Path:
+        """Resolve and verify the path to ask.py in the repo root."""
+        ask_script = self.config.repo_root / "ask.py"
+        if not ask_script.exists():
+            raise FileNotFoundError(f"ask.py not found at {ask_script}")
+        return ask_script
+    
+    def _validate_backend_requirements(self, data_type: DataType, paths: dict) -> None:
+        """Validate backend-specific prerequisites (e.g., FAISS index exists)."""
+        if data_type.type == "faiss":
+            faiss_dir = paths["faiss_dir"]
+            if not faiss_dir.exists():
+                raise FileNotFoundError(
+                    f"FAISS index not found at {faiss_dir}\n"
+                    f"Build it first: python rag_cli.py build --backend faiss --source {data_type.source}"
+                )
+    
+    def _build_env(self, data_type: DataType, paths: dict) -> dict:
+        """Prepare environment variables for the ask.py subprocess."""
+        env = os.environ.copy()
+        env["VECTOR_STORE"] = data_type.type
+        if data_type.type == "pinecone":
+            env["PINECONE_INDEX"] = paths["pinecone_index"]
+            env["PINECONE_NAMESPACE"] = paths["pinecone_namespace"]
+        elif data_type.type == "faiss":
+            env["FAISS_DIR"] = str(paths["faiss_dir"])
+        return env
+    
+    def _run_query_subprocess(self, ask_script: Path, question: str, env: dict) -> None:
+        """Execute ask.py with the provided environment and handle errors."""
+        print("💬 Querying...\n")
+        result = subprocess.run(
+            [sys.executable, str(ask_script), question],
+            env=env
+        )
+        if result.returncode != 0:
+            raise RuntimeError("Query failed")
+    
     def query(self, question: str, data_type: DataType) -> None:
         """
         Execute a query using ask.py.
@@ -269,41 +310,11 @@ class QueryEngine:
             data_type: DataType specifying backend and source
         """
         self.config.validate_env(data_type.type)
-        
-        ask_script = self.config.repo_root / "ask.py"
-        if not ask_script.exists():
-            raise FileNotFoundError(f"ask.py not found at {ask_script}")
-        
+        ask_script = self._get_ask_script()
         paths = self.config.get_paths_for_source(data_type.source)
-        
-        # Validate backend-specific requirements
-        if data_type.type == "faiss":
-            faiss_dir = paths["faiss_dir"]
-            if not faiss_dir.exists():
-                raise FileNotFoundError(
-                    f"FAISS index not found at {faiss_dir}\n"
-                    f"Build it first: python rag_cli.py build --backend faiss --source {data_type.source}"
-                )
-        
-        # Set up environment
-        env = os.environ.copy()
-        env["VECTOR_STORE"] = data_type.type
-        
-        if data_type.type == "pinecone":
-            env["PINECONE_INDEX"] = paths["pinecone_index"]
-            env["PINECONE_NAMESPACE"] = paths["pinecone_namespace"]
-        elif data_type.type == "faiss":
-            env["FAISS_DIR"] = str(paths["faiss_dir"])
-        
-        # Execute query
-        print("💬 Querying...\n")
-        result = subprocess.run(
-            [sys.executable, str(ask_script), question],
-            env=env
-        )
-        
-        if result.returncode != 0:
-            raise RuntimeError("Query failed")
+        self._validate_backend_requirements(data_type, paths)
+        env = self._build_env(data_type, paths)
+        self._run_query_subprocess(ask_script, question, env)
 
 
 # ============================================================================
