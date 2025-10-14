@@ -18,6 +18,41 @@ from dataclasses import dataclass
 from typed_rag.scripts import ingest_own_docs as ingest
 from typed_rag.scripts import build_pinecone as bp
 
+# ============================================================================
+# Helper utilities
+# ============================================================================
+
+def detect_default_backend(source: str = "own_docs") -> str:
+    """
+    Auto-detect which backend to use based on what's available.
+    
+    Priority:
+    1. VECTOR_STORE environment variable
+    2. FAISS index exists
+    3. Pinecone API key exists
+    4. Default to FAISS
+    """
+    env_choice = os.getenv("VECTOR_STORE", "").lower()
+    if env_choice in {"faiss", "pinecone"}:
+        return env_choice
+    
+    # Check if FAISS index exists
+    config = RAGConfig.default()
+    paths = config.get_paths_for_source(source)
+    faiss_dir = paths["faiss_dir"]
+    
+    index_files = {"index.faiss", "index.pkl"}
+    if faiss_dir.exists():
+        existing = {p.name for p in faiss_dir.glob("*")}
+        if index_files.issubset(existing):
+            return "faiss"
+    
+    # Check for Pinecone key
+    if os.getenv("PINECONE_API_KEY"):
+        return "pinecone"
+    
+    return "faiss"
+
 
 class DataType:
     """
@@ -318,39 +353,4 @@ def ask_question(query: str, data_type: DataType) -> None:
     query_engine = QueryEngine(config)
     query_engine.query(query, data_type)
 
-
-# ============================================================================
-# Helper utilities
-# ============================================================================
-
-def detect_default_backend(source: str = "own_docs") -> str:
-    """
-    Auto-detect which backend to use based on what's available.
-    
-    Priority:
-    1. VECTOR_STORE environment variable
-    2. FAISS index exists
-    3. Pinecone API key exists
-    4. Default to FAISS
-    """
-    env_choice = os.getenv("VECTOR_STORE", "").lower()
-    if env_choice in {"faiss", "pinecone"}:
-        return env_choice
-    
-    # Check if FAISS index exists
-    config = RAGConfig.default()
-    paths = config.get_paths_for_source(source)
-    faiss_dir = paths["faiss_dir"]
-    
-    index_files = {"index.faiss", "index.pkl"}
-    if faiss_dir.exists():
-        existing = {p.name for p in faiss_dir.glob("*")}
-        if index_files.issubset(existing):
-            return "faiss"
-    
-    # Check for Pinecone key
-    if os.getenv("PINECONE_API_KEY"):
-        return "pinecone"
-    
-    return "faiss"
 
