@@ -29,3 +29,9 @@ lxml>=4.9.0            # For better HTML parsing
 google-generativeai>=0.3.0  # For Gemini (Recommended)
 openai>=1.0.0               # For OpenAI (Alternative)
 
+# LangChain ecosystem
+langchain>=0.2.16
+langchain-community>=0.2.16
+langchain-google-genai>=2.0.0
+langchain-pinecone>=0.2.0
+
