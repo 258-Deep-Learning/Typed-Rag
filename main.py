@@ -307,7 +307,7 @@ def main() -> None:
         print("3) Own docs → FAISS (ingest + index + ask)")
         print("4) Exit")
         try:
-            choice = input("Select an option [1-3]: ").strip()
+            choice = input("Select an option [1-4]: ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return
