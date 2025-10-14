@@ -33,6 +33,7 @@ sys.path.insert(0, str(REPO_ROOT))
 # Import script helpers
 from typed_rag.scripts import ingest_own_docs as ingest
 from typed_rag.scripts import build_pinecone as bp
+from typed_rag.scripts import build_faiss as bf
 from typed_rag.scripts import build_bm25 as bb
 
 
@@ -41,6 +42,7 @@ MY_DOCS_DIR = REPO_ROOT / "my-documents"
 CHUNKS_JSONL = REPO_ROOT / "typed_rag" / "data" / "chunks.jsonl"
 PASSAGES_JSONL = REPO_ROOT / "typed_rag" / "data" / "passages.jsonl"
 BM25_PKL = REPO_ROOT / "typed_rag" / "indexes" / "bm25_chunks.pkl"
+FAISS_DIR = REPO_ROOT / "typed_rag" / "indexes" / "faiss"
 
 PINECONE_INDEX = "typedrag-own"
 PINECONE_NAMESPACE = "own_docs"
@@ -164,6 +166,73 @@ def flow_first_ingest_pinecone() -> None:
         print()
 
 
+def flow_faiss_from_own_docs() -> None:
+    print("\n=== FAISS Flow: Own Docs → FAISS (ingest + index + ask) ===\n")
+
+    # 1) Ingest and chunk
+    root = MY_DOCS_DIR
+    out_path = CHUNKS_JSONL
+    print(f"📥 Ingesting from: {root}")
+    if not root.exists():
+        print(f"❌ Directory not found: {root}")
+        return
+    chunks = ingest.ingest_directory(root)
+    if not chunks:
+        print("❌ No chunks generated (documents may be empty or unsupported)")
+        return
+    ingest.save_chunks_jsonl(chunks, out_path)
+    print(f"✓ Saved chunks: {out_path} ({len(chunks)} records)")
+
+    # 2) Build FAISS
+    print("\n📦 Building FAISS index...")
+    FAISS_DIR.mkdir(parents=True, exist_ok=True)
+    bf.load_chunks  # type: ignore  # ensure import not optimized away
+    cmd = [
+        sys.executable,
+        "-m",
+        "typed_rag.scripts.build_faiss",
+        "--in",
+        str(out_path),
+        "--out_dir",
+        str(FAISS_DIR),
+    ]
+    try:
+        import subprocess
+        res = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        if res.stdout:
+            print(res.stdout)
+        if res.stderr:
+            print(res.stderr)
+        print("✓ FAISS build complete")
+    except Exception as e:
+        print(f"❌ FAISS build failed: {e}")
+        return
+
+    # 3) Query loop via ask.py with VECTOR_STORE=faiss
+    print("\nYou can now query. Type an empty line to return to menu.")
+    ask_py = REPO_ROOT / "ask.py"
+    if not ask_py.exists():
+        print(f"❌ ask.py not found at {ask_py}")
+        return
+    while True:
+        try:
+            q = input("Question> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        if not q:
+            break
+        print()
+        env = os.environ.copy()
+        env["VECTOR_STORE"] = "faiss"
+        env["FAISS_DIR"] = str(FAISS_DIR)
+        import subprocess
+        res = subprocess.run([sys.executable, str(ask_py), q], env=env)
+        if res.returncode != 0:
+            print("❌ Query failed")
+        print()
+
+
 def flow_second_passages_bm25(top_k: int = DEFAULT_TOP_K) -> None:
     print("\n=== Second Flow: Passages → BM25 ===\n")
 
@@ -235,7 +304,8 @@ def main() -> None:
         print("\n==== Typed-RAG CLI ====")
         print("1) Own docs → Pinecone (ingest + index + ask)")
         print("2) Passages → BM25 (build + query + Gemini)")
-        print("3) Exit")
+        print("3) Own docs → FAISS (ingest + index + ask)")
+        print("4) Exit")
         try:
             choice = input("Select an option [1-3]: ").strip()
         except (EOFError, KeyboardInterrupt):
@@ -247,6 +317,8 @@ def main() -> None:
         elif choice == "2":
             flow_second_passages_bm25(top_k=DEFAULT_TOP_K)
         elif choice == "3":
+            flow_faiss_from_own_docs()
+        elif choice == "4":
             print("Goodbye!")
             return
         else:
