@@ -40,6 +40,7 @@ from typed_rag.scripts import ingest_own_docs as ingest
 from typed_rag.scripts import build_pinecone as bp
 from typed_rag.scripts import build_faiss as bf
 from typed_rag.scripts import build_bm25 as bb
+import rag_cli as rag
 
 
 # ---------------------------- Config Defaults ----------------------------
@@ -308,48 +309,44 @@ def flow_second_passages_bm25(top_k: int = DEFAULT_TOP_K) -> None:
 
 # ---------------------------- CLI ----------------------------
 def main() -> None:
-    while True:
-        print("\n==== Typed-RAG CLI ====")
-        print("1) Own docs → Pinecone (ingest + index + ask)")
-        print("2) Passages → BM25 (build + query + Gemini)")
-        print("3) Own docs → FAISS (ingest + index + ask)")
-        print("4) Exit")
-        try:
-            choice = input("Select an option [1-4]: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return
+    # If run without args, show friendly usage instead of argparse error
+    if len(sys.argv) == 1:
+        print("usage: rag-cli {build,ask} ...\n")
+        print("Quick examples:")
+        print("  python main.py build          # builds FAISS from my-documents (default)")
+        print("  python main.py build -b pinecone  # builds Pinecone")
+        print("  python main.py ask \"Your question\"   # auto-detects backend (FAISS if present)\n")
+        print("More:")
+        print("  python main.py build --backend faiss --source own_docs --rebuild")
+        print()
+        print("  python main.py ask --backend pinecone --source own_docs \"What is Amazon's revenue?\"")
+        print("  python main.py ask --backend faiss --source own_docs \"Summarize the design.\"")
+        return
+    # Delegate CLI to rag_cli's argparse-based split interface
+    rag.main()
 
-        if choice == "1":
-            flow_first_ingest_pinecone()
-        elif choice == "2":
-            flow_second_passages_bm25(top_k=DEFAULT_TOP_K)
-        elif choice == "3":
-            flow_faiss_from_own_docs()
-        elif choice == "4":
-            print("Goodbye!")
-            return
-        else:
-            print("Please choose 1, 2 or 3.")
-
-
-"""
-type = 'pinecone', 'faiss'
-source = 'own_docs', 'wikipedia'
 
 class DataType:
+    """
+    Simple shape wrapper for backend/source selection.
+    type: 'pinecone' | 'faiss'
+    source: 'own_docs'
+    """
     def __init__(self, type: str, source: str):
         self.type = type
         self.source = source
 
 
-data_type = DataType('pinecone', 'own_docs')
-def create_index(data_type) -> None:
-    ...
+def create_index(data_type: "DataType", docs_dir: Path = MY_DOCS_DIR, rebuild: bool = False) -> None:
+    """Build index only (no querying). Delegates to rag_cli.create_index."""
+    dt = rag.DataType(data_type.type, data_type.source)
+    rag.create_index(dt, docs_dir=docs_dir, rebuild=rebuild)
 
-def ask_question(query, data_type) -> None:
-    ...
-"""
+
+def ask_question(query: str, data_type: "DataType") -> None:
+    """Ask only (no building). Delegates to rag_cli.ask_question (uses ask.py)."""
+    dt = rag.DataType(data_type.type, data_type.source)
+    rag.ask_question(query, dt)
 
 if __name__ == "__main__":
     main()
