@@ -171,6 +171,186 @@ class PineconeDenseStore:
         return out
 
 
+# ---------- Dense (FAISS) ----------
+class FAISSDenseStore:
+    def __init__(
+        self,
+        index_path: str,
+        meta_path: str,
+        dimension: int = 384,
+        metric: str = "cosine",
+        create_if_missing: bool = True,
+    ):
+        """A lightweight FAISS-based dense store.
+
+        Persists two artifacts:
+          - index_path: FAISS index (IndexFlatIP wrapped in IndexIDMap2)
+          - meta_path: JSON mapping of int_id -> {"id": str_id, "metadata": {...}}
+        """
+        import os as _os
+        import json as _json
+        import faiss  # type: ignore
+
+        self.index_path = index_path
+        self.meta_path = meta_path
+        self.dimension = dimension
+        self.metric = metric
+
+        self._faiss = faiss
+        self._index = None
+        self._meta: Dict[int, Dict[str, Any]] = {}
+
+        idx_exists = _os.path.exists(index_path)
+        meta_exists = _os.path.exists(meta_path)
+
+        if idx_exists and meta_exists:
+            self._index = faiss.read_index(index_path)
+            with open(meta_path, "r", encoding="utf-8") as f:
+                self._meta = _json.load(f)
+            # keys from JSON are strings; normalize to int keys
+            self._meta = {int(k): v for k, v in self._meta.items()}
+        elif create_if_missing:
+            if metric == "cosine" or metric == "ip":
+                base = faiss.IndexFlatIP(dimension)
+            elif metric == "l2":
+                base = faiss.IndexFlatL2(dimension)
+            else:
+                raise ValueError(f"Unsupported metric for FAISS: {metric}")
+            self._index = faiss.IndexIDMap2(base)
+            self._meta = {}
+        else:
+            raise FileNotFoundError(
+                f"FAISS index or meta not found: index={index_path}, meta={meta_path}"
+            )
+
+    @staticmethod
+    def _strings_to_int64_ids(strings: List[str]) -> List[int]:
+        import hashlib
+        ids: List[int] = []
+        for s in strings:
+            h = hashlib.sha1(s.encode("utf-8")).digest()  # 20 bytes
+            # take first 8 bytes for a stable 64-bit id
+            i = int.from_bytes(h[:8], byteorder="big", signed=False)
+            # FAISS expects signed int64 ids; constrain to [0, 2^63-1]
+            i &= (1 << 63) - 1
+            ids.append(i)
+        return ids
+
+    @staticmethod
+    def _ensure_float32(vecs: "np.ndarray") -> "np.ndarray":
+        import numpy as np
+        if vecs.dtype != np.float32:
+            return vecs.astype("float32", copy=False)
+        return vecs
+
+    @staticmethod
+    def _maybe_normalize_for_ip(vecs: "np.ndarray", metric: str) -> "np.ndarray":
+        import numpy as np
+        if metric in ("cosine", "ip"):
+            # L2 normalize so IP == cosine
+            norms = np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-12
+            return (vecs / norms).astype("float32", copy=False)
+        return vecs
+
+    def upsert(
+        self,
+        ids: List[str],
+        vectors: "np.ndarray",
+        metadatas: Optional[List[Dict[str, Any]]] = None,
+        batch_size: int = 10000,
+        persist: bool = True,
+    ) -> None:
+        assert self._index is not None, "FAISS index is not initialized"
+        faiss = self._faiss
+        import numpy as np
+
+        int_ids = self._strings_to_int64_ids(ids)
+        vectors = self._maybe_normalize_for_ip(self._ensure_float32(vectors), self.metric)
+
+        for i in range(0, len(int_ids), batch_size):
+            batch_int = np.asarray(int_ids[i : i + batch_size], dtype=np.int64)
+            batch_vecs = vectors[i : i + batch_size]
+            self._index.add_with_ids(batch_vecs, batch_int)
+            if metadatas is not None:
+                for j, k in enumerate(batch_int):
+                    self._meta[int(k)] = {
+                        "id": ids[i + j],
+                        "metadata": metadatas[i + j] if metadatas else {},
+                    }
+
+        if persist:
+            faiss.write_index(self._index, self.index_path)
+            import json as _json
+            with open(self.meta_path, "w", encoding="utf-8") as f:
+                _json.dump(self._meta, f)
+
+    def query(
+        self,
+        query_vec: "np.ndarray",
+        top_k: int = 20,
+        metadata_filter: Optional[Dict[str, Any]] = None,
+        include_values: bool = False,
+    ) -> List[Dict[str, Any]]:
+        assert self._index is not None, "FAISS index is not initialized"
+        import numpy as np
+
+        if query_vec.ndim == 2:
+            q = query_vec[0]
+        else:
+            q = query_vec
+        q = self._maybe_normalize_for_ip(self._ensure_float32(q.reshape(1, -1)), self.metric)
+        scores, ids = self._index.search(q, top_k)
+
+        out: List[Dict[str, Any]] = []
+        for score, int_id in zip(scores[0].tolist(), ids[0].tolist()):
+            if int_id == -1:
+                continue
+            meta_rec = self._meta.get(int_id, {})
+            str_id = meta_rec.get("id", str(int_id))
+            md = meta_rec.get("metadata", {})
+            rec = {"id": str_id, "score": float(score), "metadata": md}
+            out.append(rec)
+
+        if metadata_filter:
+            # Simple shallow filter: all keys in filter must match exactly in metadata
+            def _ok(m: Dict[str, Any]) -> bool:
+                for k, v in metadata_filter.items():
+                    if m.get(k) != v:
+                        return False
+                return True
+            out = [r for r in out if _ok(r.get("metadata", {}))]
+
+        return out
+
+
+# ---------- LangChain Embeddings adapter for BGE ----------
+from langchain_core.embeddings import Embeddings  # type: ignore
+
+
+class LCBGEEmbeddings(Embeddings):
+    """Adapter to use our BGEEmbedder with LangChain's FAISS.
+
+    Implements the minimal interface of langchain_core.embeddings.Embeddings.
+    """
+
+    def __init__(self, embedder: Optional[BGEEmbedder] = None, device: Optional[str] = None):
+        if embedder is None:
+            embedder = BGEEmbedder(device=device)
+        self._embedder = embedder
+
+    # LangChain interface
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        import numpy as np
+        vecs = self._embedder.encode_passages(texts)
+        return np.asarray(vecs, dtype="float32").tolist()
+
+    def embed_query(self, text: str) -> List[float]:
+        import numpy as np
+        vec = self._embedder.encode_queries([text])
+        return np.asarray(vec[0], dtype="float32").tolist()
+
+    # Do not implement __call__; ensure LC treats this as an Embeddings object
+
 # ---------- Lexical (BM25 / Pyserini) ----------
 class BM25Lexical:
     """Wrap Pyserini SimpleSearcher. Assumes you indexed JSON docs with fields:
