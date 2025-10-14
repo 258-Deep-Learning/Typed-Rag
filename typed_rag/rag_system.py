@@ -15,6 +15,8 @@ import subprocess
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
+from typed_rag.scripts import ingest_own_docs as ingest
+from typed_rag.scripts import build_pinecone as bp
 
 
 class DataType:
@@ -48,7 +50,6 @@ class RAGConfig:
     
     # Directories
     repo_root: Path
-    
     # Query settings
     top_k: int = 5
     llm_model: str = "gemini-2.5-flash"
@@ -117,7 +118,6 @@ class IndexBuilder:
             
             print(f"📥 Ingesting documents from: {docs_dir}")
             
-            from typed_rag.scripts import ingest_own_docs as ingest
             
             chunks = ingest.ingest_directory(docs_dir)
             if not chunks:
@@ -139,7 +139,6 @@ class IndexBuilder:
         """Build Pinecone index."""
         self.config.validate_env("pinecone")
         
-        from typed_rag.scripts import build_pinecone as bp
         
         paths = self.config.get_paths_for_source(data_type.source)
         
