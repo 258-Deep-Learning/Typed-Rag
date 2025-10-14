@@ -171,6 +171,8 @@ def flow_first_ingest_pinecone() -> None:
         print()
 
 
+
+
 def flow_faiss_from_own_docs() -> None:
     print("\n=== FAISS Flow: Own Docs → FAISS (ingest + index + ask) ===\n")
 
@@ -238,6 +240,7 @@ def flow_faiss_from_own_docs() -> None:
         print()
 
 
+# this is not completed 
 def flow_second_passages_bm25(top_k: int = DEFAULT_TOP_K) -> None:
     print("\n=== Second Flow: Passages → BM25 ===\n")
 
@@ -329,6 +332,24 @@ def main() -> None:
         else:
             print("Please choose 1, 2 or 3.")
 
+
+"""
+type = 'pinecone', 'faiss'
+source = 'own_docs', 'wikipedia'
+
+class DataType:
+    def __init__(self, type: str, source: str):
+        self.type = type
+        self.source = source
+
+
+data_type = DataType('pinecone', 'own_docs')
+def create_index(data_type) -> None:
+    ...
+
+def ask_question(query, data_type) -> None:
+    ...
+"""
 
 if __name__ == "__main__":
     main()
