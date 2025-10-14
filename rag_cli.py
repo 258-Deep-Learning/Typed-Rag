@@ -5,22 +5,21 @@ Typed-RAG CLI - Simple interface for building indices and asking questions.
 Usage examples:
   # Build indices
   python rag_cli.py build
-  python rag_cli.py build --backend pinecone
-  python rag_cli.py build --backend faiss --rebuild
+  python rag_cli.py build --backend pinecone --source wikipedia
+  python rag_cli.py build --backend faiss --source own_docs --rebuild
 
   # Ask questions
   python rag_cli.py ask "What is Amazon's revenue?"
-  python rag_cli.py ask --backend pinecone "Summarize the design."
+  python rag_cli.py ask --backend pinecone --source wikipedia "Explain quantum computing"
 """
 
 import argparse
-from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # Import the new core module
-from typed_rag.rag_system import RAGSystem, RAGConfig
+from typed_rag.rag_system import DataType, create_index, ask_question, detect_default_backend
 
 
 def main():
@@ -40,14 +39,15 @@ def main():
         help="Backend to build (default: faiss)"
     )
     build_parser.add_argument(
+        "--source", "-s",
+        choices=["own_docs", "wikipedia"],
+        default="own_docs",
+        help="Data source (default: own_docs)"
+    )
+    build_parser.add_argument(
         "--rebuild",
         action="store_true",
         help="Force re-ingest and re-index"
-    )
-    build_parser.add_argument(
-        "--docs-dir",
-        type=Path,
-        help="Custom documents directory (default: my-documents/)"
     )
 
     # Ask command
@@ -58,35 +58,41 @@ def main():
         help="Backend to query (default: auto-detect)"
     )
     ask_parser.add_argument(
+        "--source", "-s",
+        choices=["own_docs", "wikipedia"],
+        default="own_docs",
+        help="Data source (default: own_docs)"
+    )
+    ask_parser.add_argument(
         "question",
         help="The question to ask"
     )
 
     args = parser.parse_args()
 
-    # Initialize RAG system
-    config = RAGConfig.default()
-    if hasattr(args, 'docs_dir') and args.docs_dir:
-        config.docs_dir = args.docs_dir
-    
-    rag_system = RAGSystem(config)
-
     # Execute command
     try:
         if args.command == "build":
-            print(f"\n🔨 Building {args.backend.upper()} index...")
-            rag_system.build_index(
-                backend=args.backend,
-                force_rebuild=args.rebuild
-            )
-            print(f"\n✅ Successfully built {args.backend.upper()} index!")
+            # Create DataType
+            data_type = DataType(args.backend, args.source)
+            
+            print(f"\n🔨 Building {args.backend.upper()} index for {args.source}...")
+            create_index(data_type, rebuild=args.rebuild)
+            
+            print(f"\n✅ Successfully built {args.backend.upper()} index for {args.source}!")
             print(f"\nNow you can ask questions:")
             print(f'  python rag_cli.py ask "Your question here"')
+            print(f'  python rag_cli.py ask --source {args.source} "Your question here"')
         
         elif args.command == "ask":
-            backend = args.backend or rag_system.detect_default_backend()
-            print(f"\n🔍 Using {backend.upper()} backend...")
-            rag_system.ask(args.question, backend=backend)
+            # Auto-detect backend if not specified
+            backend = args.backend or detect_default_backend(args.source)
+            
+            # Create DataType
+            data_type = DataType(backend, args.source)
+            
+            print(f"\n🔍 Using {backend.upper()} backend for {args.source}...")
+            ask_question(args.question, data_type)
     
     except Exception as e:
         print(f"\n❌ Error: {e}")
