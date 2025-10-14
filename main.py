@@ -18,6 +18,11 @@ second (Passages → BM25):
 Common printing for queries:
     - rank, score, title/doc, chunk_idx, url
     - snippet/highlight
+
+third (Own Docs → FAISS):
+    - Ingest documents from my-documents/ → create typed_rag/data/chunks.jsonl
+    - Build FAISS index from chunks.jsonl
+    - Query by calling ask.py (which prints retrieved chunks and the final answer)
 """
 
 import os
