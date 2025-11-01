@@ -1,0 +1,32 @@
+{
+  "question_id": "1f421b4b47cd",
+  "original_question": "Python vs Java for web development",
+  "type": "Comparison",
+  "sub_queries": [
+    {
+      "aspect": "Performance",
+      "query": "Compare the performance of Python and Java for web development.",
+      "strategy": "compare"
+    },
+    {
+      "aspect": "Safety and Robustness",
+      "query": "Evaluate the safety and robustness of Python versus Java in web development contexts.",
+      "strategy": "compare"
+    },
+    {
+      "aspect": "Ecosystem and Libraries",
+      "query": "Analyze the web development ecosystem and available libraries for Python compared to Java.",
+      "strategy": "compare"
+    },
+    {
+      "aspect": "Learning Curve and Developer Productivity",
+      "query": "Contrast the learning curve and developer productivity when using Python versus Java for web development.",
+      "strategy": "compare"
+    },
+    {
+      "aspect": "Tooling and Frameworks",
+      "query": "Compare the tooling and popular web development frameworks available for Python and Java.",
+      "strategy": "compare"
+    }
+  ]
+}

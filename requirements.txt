@@ -1,5 +1,5 @@
 # Core dependencies for Typed-RAG Weekend 1
-pyserini>=0.22.0
+# pyserini>=0.22.0
 pinecone[grpc]>=5.0.0
 transformers>=4.35.0
 sentencepiece>=0.1.99

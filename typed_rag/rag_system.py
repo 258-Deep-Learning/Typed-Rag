@@ -17,6 +17,7 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from typed_rag.scripts import ingest_own_docs as ingest
 from typed_rag.scripts import build_pinecone as bp
+import ask
 
 # ============================================================================
 # Helper utilities
@@ -222,13 +223,13 @@ class IndexBuilder:
             "--out_dir",
             str(faiss_dir),
         ]
-        
+
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         if result.stdout:
             print(result.stdout)
         if result.stderr:
             print(result.stderr, file=sys.stderr)
-        
+
         print("✓ FAISS index built successfully")
     
     def build(self, data_type: DataType, force_rebuild: bool = False) -> None:
@@ -259,7 +260,7 @@ class QueryEngine:
     
     def __init__(self, config: RAGConfig):
         self.config = config
-    
+
     # ------------------------------------------------------------------
     # Internal helpers (readability only; behavior unchanged)
     # ------------------------------------------------------------------
@@ -269,7 +270,7 @@ class QueryEngine:
         if not ask_script.exists():
             raise FileNotFoundError(f"ask.py not found at {ask_script}")
         return ask_script
-    
+
     def _validate_backend_requirements(self, data_type: DataType, paths: dict) -> None:
         """Validate backend-specific prerequisites (e.g., FAISS index exists)."""
         if data_type.type == "faiss":
@@ -279,7 +280,7 @@ class QueryEngine:
                     f"FAISS index not found at {faiss_dir}\n"
                     f"Build it first: python rag_cli.py build --backend faiss --source {data_type.source}"
                 )
-    
+
     def _build_env(self, data_type: DataType, paths: dict) -> dict:
         """Prepare environment variables for the ask.py subprocess."""
         env = os.environ.copy()
@@ -290,31 +291,23 @@ class QueryEngine:
         elif data_type.type == "faiss":
             env["FAISS_DIR"] = str(paths["faiss_dir"])
         return env
-    
-    def _run_query_subprocess(self, ask_script: Path, question: str, env: dict) -> None:
-        """Execute ask.py with the provided environment and handle errors."""
-        print("💬 Querying...\n")
-        result = subprocess.run(
-            [sys.executable, str(ask_script), question],
-            env=env
-        )
-        if result.returncode != 0:
-            raise RuntimeError("Query failed")
-    
+
     def query(self, question: str, data_type: DataType) -> None:
         """
-        Execute a query using ask.py.
-        
+        Execute a query by calling ask.main() directly.
+
         Args:
             question: The question to ask
             data_type: DataType specifying backend and source
         """
         self.config.validate_env(data_type.type)
-        ask_script = self._get_ask_script()
         paths = self.config.get_paths_for_source(data_type.source)
         self._validate_backend_requirements(data_type, paths)
+
+        # Set environment variables for ask.main()
         env = self._build_env(data_type, paths)
-        self._run_query_subprocess(ask_script, question, env)
+        # Call ask.main() directly instead of subprocess
+        ask.main(question)
 
 
 # ============================================================================
@@ -324,17 +317,17 @@ class QueryEngine:
 def create_index(data_type: DataType, rebuild: bool = False) -> None:
     """
     Build an index for the specified data type.
-    
+
     Args:
         data_type: DataType instance specifying backend and source
         rebuild: Force rebuild even if index exists
-    
+
     Example:
         from typed_rag.rag_system import DataType, create_index
-        
+
         data_type = DataType('pinecone', 'own_docs')
         create_index(data_type)
-        
+
         data_type = DataType('faiss', 'wikipedia')
         create_index(data_type, rebuild=True)
     """
@@ -346,22 +339,21 @@ def create_index(data_type: DataType, rebuild: bool = False) -> None:
 def ask_question(query: str, data_type: DataType) -> None:
     """
     Ask a question using the specified data type.
-    
+
     Args:
         query: The question to ask
         data_type: DataType instance specifying backend and source
-    
+
     Example:
         from typed_rag.rag_system import DataType, ask_question
-        
+
         data_type = DataType('pinecone', 'own_docs')
         ask_question("What is Amazon's revenue?", data_type)
-        
+
         data_type = DataType('faiss', 'wikipedia')
         ask_question("Explain quantum computing", data_type)
     """
     config = RAGConfig.default()
     query_engine = QueryEngine(config)
     query_engine.query(query, data_type)
-
 

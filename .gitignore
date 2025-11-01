@@ -62,3 +62,6 @@ models/
 *.tmp
 temp/
 
+
+
+env
