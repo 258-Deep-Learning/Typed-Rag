@@ -20,7 +20,7 @@ DEFAULT_VECTOR_STORE = "pinecone"
 DEFAULT_PINECONE_INDEX = "typedrag-own"
 DEFAULT_PINECONE_NAMESPACE = "own_docs"
 DEFAULT_FAISS_DIR = os.path.join(os.path.dirname(__file__), "typed_rag", "indexes", "faiss")
-DEFAULT_MODEL_NAME = "gemini-2.5-flash"
+DEFAULT_MODEL_NAME = "gemini-2.5-flash-lite"
 RETRIEVAL_TOP_K = 5
 
 
@@ -150,14 +150,18 @@ def make_retrieval_fn(
     return retrieve
 
 
-def main():
+def main(question):
     # Get question from command line
-    if len(sys.argv) < 2:
+    if len(sys.argv) == 2:
+        question = sys.argv[1]
+    elif len(sys.argv) < 2 and not question:
         print("Usage: python3 ask.py \"Your question here\"")
         print("Example: python3 ask.py \"What is Amazon's revenue?\"")
         sys.exit(1)
 
-    question = sys.argv[1]
+
+
+
     k = RETRIEVAL_TOP_K  # Number of passages to retrieve
 
     # Read environment-driven config
@@ -215,4 +219,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main("data engineer")
