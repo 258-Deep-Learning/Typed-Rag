@@ -2,6 +2,8 @@ Awesome—here’s a concrete, coder-agent-ready **Weekend 1 (on your own docume
 
 ---
 
+
+
 # Weekend 1 — Own Docs + Pinecone + Baselines
 
 ## A) Repo layout & configs (keep as in the proposal)
