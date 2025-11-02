@@ -547,7 +547,7 @@ class Retriever:
                     doc_id=md.get("doc_id"),
                     section=md.get("section"),
                     chunk_idx=md.get("chunk_idx"),
-                    text=r.get("text"),  # may be None if coming from dense-only
+                    text=md.get("text") or r.get("text"),  # ensure downstream access
                     score=float(r["score"]),
                 )
             )
@@ -556,3 +556,75 @@ class Retriever:
         _latency_ms = int((time.time() - t0) * 1000)
         return docs[:k]
 
+
+# ---------- LangChain FAISS adapter ----------
+class LangChainFAISSAdapter:
+    """Wraps a LangChain FAISS vector store to match the query interface."""
+
+    def __init__(self, lc_store):
+        self.store = lc_store
+
+    def query(
+        self,
+        query_vec: "np.ndarray",
+        top_k: int = 20,
+        metadata_filter: Optional[Dict[str, Any]] = None,
+        include_values: bool = False,
+    ) -> List[Dict[str, Any]]:
+        import numpy as np
+
+        if query_vec.ndim == 2:
+            vec = query_vec[0]
+        else:
+            vec = query_vec
+        vec = np.asarray(vec, dtype="float32")
+        vec_list = vec.tolist()
+        if hasattr(self.store, "similarity_search_by_vector_with_relevance_scores"):
+            results = self.store.similarity_search_by_vector_with_relevance_scores(vec_list, k=top_k)
+        elif hasattr(self.store, "similarity_search_with_score_by_vector"):
+            results = self.store.similarity_search_with_score_by_vector(vec_list, k=top_k)
+        elif hasattr(self.store, "similarity_search_by_vector"):
+            docs = self.store.similarity_search_by_vector(vec_list, k=top_k)
+            results = [(doc, 1.0) for doc in docs]
+        else:
+            raise AttributeError("FAISS store does not expose a compatible similarity search method")
+        out: List[Dict[str, Any]] = []
+        for doc, score in results:
+            md = dict(doc.metadata or {})
+            text = doc.page_content or ""
+            if "text" not in md:
+                md["text"] = text
+            record = {
+                "id": md.get("id") or md.get("doc_id") or "",
+                "score": float(score),
+                "metadata": md,
+                "text": text,
+            }
+            out.append(record)
+
+        if metadata_filter:
+            def _matches(meta: Dict[str, Any]) -> bool:
+                for k, v in metadata_filter.items():
+                    if meta.get(k) != v:
+                        return False
+                return True
+
+            out = [rec for rec in out if _matches(rec.get("metadata", {}))]
+
+        return out[:top_k]
+
+
+def load_faiss_adapter(
+    faiss_dir: str,
+    embedder: Optional[BGEEmbedder] = None,
+) -> LangChainFAISSAdapter:
+    """Load a FAISS vector store saved via LangChain and wrap it for retrieval."""
+    from langchain_community.vectorstores import FAISS as LCFAISS  # type: ignore
+
+    embeddings = LCBGEEmbeddings(embedder=embedder)
+    lc_store = LCFAISS.load_local(
+        faiss_dir,
+        embeddings,
+        allow_dangerous_deserialization=True,
+    )
+    return LangChainFAISSAdapter(lc_store)

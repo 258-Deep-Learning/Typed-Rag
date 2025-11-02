@@ -97,7 +97,7 @@ for evidence in bundle.evidence:
     print(f"{evidence.aspect}: {len(evidence.documents)} docs")
 ```
 
-### 5. Run Complete Pipeline
+### 5. Run Complete Pipeline (Programmatic)
 
 ```python
 from examples.typed_rag_pipeline import run_typed_rag_example
@@ -109,6 +109,47 @@ plan, bundle = run_typed_rag_example(
     rerank=True
 )
 ```
+
+### 6. Run Type-Aware CLI Pipeline
+
+```bash
+# Build FAISS index over your documents (one-time)
+python rag_cli.py build --backend faiss --source own_docs
+
+# Ask with full Typed-RAG flow (classification → decomposition → retrieval → generation)
+python rag_cli.py typed-ask "Pros and cons of remote work"
+python rag_cli.py typed-ask --backend pinecone --source wikipedia --rerank \
+  "Why were steam engines pivotal to the Industrial Revolution?"
+```
+
+Outputs for each run are written to `./output/{question_id}_*` unless `--no-save` is passed.
+
+### 7. Demo All Question Types
+
+```bash
+python examples/happy_flow_demo.py --backend faiss --source own_docs
+```
+
+This script sends one question from each NFQ type through the full pipeline and prints the aspect answers plus the aggregated response.
+
+## 🧠 Answer Generation & Aggregation
+
+- `typed_rag/generation/generator.py` produces aspect-level answers (`AspectAnswer`) from evidence bundles.
+- `typed_rag/generation/aggregator.py` merges aspect answers into a final, type-aware response with structured formatting.
+- Caching lives under `cache/answers/` and `cache/final_answers/`.
+- Fallbacks ensure deterministic answers when LLM access is unavailable.
+
+## 📏 Evaluation (LINKAGE)
+
+- `typed_rag/eval/linkage.py` wraps the LINKAGE prompt and provides heuristic fallbacks.
+- `typed_rag/eval/references.py` can synthesise ordered reference answers when human annotations are unavailable.
+- `typed_rag/eval/runner.py` evaluates a JSONL file of `{question, candidate, references}` records:
+
+```bash
+python -m typed_rag.eval.runner --input outputs.jsonl --use-llm
+```
+
+Outputs include MRR, MPR, and per-question ranks. Omit `--use-llm` to rely on the embedding-based heuristic scorer.
 
 ## 📊 Question Types & Decomposition Strategies
 
@@ -164,17 +205,10 @@ plan, bundle = run_typed_rag_example(
 
 ## 🧪 Testing
 
-Run the comprehensive test suite with 30 tests (5 per question type):
+Run all tests (decomposition + generation fallbacks):
 
 ```bash
-python tests/test_decomposition.py
-```
-
-Expected output:
-```
-Ran 30 tests in X.XXs
-
-OK
+pytest tests
 ```
 
 ## 📦 Output Formats
@@ -328,4 +362,3 @@ When adding new question types or decomposition strategies:
 ## 📄 License
 
 MIT License - see LICENSE file for details.
-

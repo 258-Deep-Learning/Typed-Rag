@@ -13,6 +13,8 @@ from dataclasses import dataclass, asdict
 from typing import List, Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
 
+from typed_rag.core.keys import get_fastest_model
+
 
 @dataclass
 class SubQuery:
@@ -94,8 +96,8 @@ Return ONLY a JSON array: [{{"aspect": "...", "query": "..."}}, ...]""",
         },
     }
 
-    def __init__(self, model_name: str = "gemini-2.5-flash-lite", cache_dir: Optional[Path] = None):
-        self.model_name = model_name
+    def __init__(self, model_name=None, cache_dir: Optional[Path] = None):
+        self.model_name = get_fastest_model() or model_name
         self.cache_dir = Path(cache_dir) if cache_dir else Path("./cache/decomposition")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._llm = None

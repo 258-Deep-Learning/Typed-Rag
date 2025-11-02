@@ -9,14 +9,27 @@ This module provides:
 - QueryEngine: Query indices (teammate can focus here)
 """
 
+import json
 import os
 import sys
 import subprocess
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-from typed_rag.scripts import ingest_own_docs as ingest
+
+from typed_rag.classifier import classify_question
+from typed_rag.core.keys import get_fastest_model
+from typed_rag.decompose import decompose_question
+from typed_rag.generation import TypedAnswerAggregator, TypedAnswerGenerator
+from typed_rag.retrieval.orchestrator import RetrievalOrchestrator
+from typed_rag.retrieval.pipeline import (
+    BGEEmbedder,
+    PineconeDenseStore,
+    load_faiss_adapter,
+)
 from typed_rag.scripts import build_pinecone as bp
+from typed_rag.scripts import ingest_own_docs as ingest
+
 import ask
 
 # ============================================================================
@@ -88,7 +101,7 @@ class RAGConfig:
     repo_root: Path
     # Query settings
     top_k: int = 5
-    llm_model: str = "gemini-2.5-flash"
+    llm_model = get_fastest_model()
     
     @classmethod
     def default(cls, repo_root: Optional[Path] = None) -> "RAGConfig":
@@ -232,7 +245,7 @@ class IndexBuilder:
 
         print("✓ FAISS index built successfully")
     
-    def build(self, data_type: DataType, force_rebuild: bool = False) -> None:
+    def build(self, data_type: DataType, force_rebuild: bool = True) -> None:
         """
         Main entry point for building indices.
         
@@ -281,6 +294,23 @@ class QueryEngine:
                     f"Build it first: python rag_cli.py build --backend faiss --source {data_type.source}"
                 )
 
+    def _load_vector_store(
+        self,
+        data_type: DataType,
+        paths: dict,
+        embedder: BGEEmbedder,
+    ):
+        """Instantiate the vector store corresponding to the backend."""
+        if data_type.type == "faiss":
+            faiss_dir = paths["faiss_dir"]
+            return load_faiss_adapter(str(faiss_dir), embedder)
+
+        return PineconeDenseStore(
+            index_name=paths["pinecone_index"],
+            namespace=paths["pinecone_namespace"],
+            create_if_missing=False,
+        )
+
     def _build_env(self, data_type: DataType, paths: dict) -> dict:
         """Prepare environment variables for the ask.py subprocess."""
         env = os.environ.copy()
@@ -308,6 +338,76 @@ class QueryEngine:
         env = self._build_env(data_type, paths)
         # Call ask.main() directly instead of subprocess
         ask.main(question)
+
+    def typed_query(
+        self,
+        question: str,
+        data_type: DataType,
+        rerank: bool = False,
+        use_llm: bool = True,
+        save_artifacts: bool = True,
+        output_dir: Optional[Path] = None,
+    ):
+        """
+        Execute the full Typed-RAG pipeline and return the aggregated answer.
+
+        Args:
+            question: User question.
+            data_type: Backend/source selection.
+            rerank: Enable cross-encoder reranking.
+            use_llm: Enable Gemini calls (falls back to heuristic otherwise).
+            save_artifacts: Persist plan/evidence/final answer to disk.
+            output_dir: Directory for persisted artifacts (defaults to ./output).
+        """
+        self.config.validate_env(data_type.type)
+        paths = self.config.get_paths_for_source(data_type.source)
+        self._validate_backend_requirements(data_type, paths)
+
+        embedder = BGEEmbedder()
+        vector_store = self._load_vector_store(data_type, paths, embedder)
+
+        # Typed pipeline steps
+        question_type = classify_question(question, use_llm=use_llm)
+        plan = decompose_question(
+            question,
+            question_type,
+            cache_dir=self.config.repo_root / "cache" / "decomposition",
+        )
+
+        orchestrator = RetrievalOrchestrator(
+            embedder=embedder,
+            vector_store=vector_store,
+            vector_store_type=data_type.type,
+            cache_dir=self.config.repo_root / "cache" / "evidence",
+            rerank=rerank,
+        )
+
+        bundle = orchestrator.retrieve_evidence(
+            plan,
+            use_cache=True,
+            final_top_k=self.config.top_k,
+        )
+
+        generator = TypedAnswerGenerator(
+            cache_dir=self.config.repo_root / "cache" / "answers",
+            use_llm=use_llm,
+        )
+        aspect_answers = generator.generate(plan, bundle)
+
+        aggregator = TypedAnswerAggregator(
+            cache_dir=self.config.repo_root / "cache" / "final_answers",
+            use_llm=use_llm,
+        )
+        final_answer = aggregator.aggregate(plan, aspect_answers)
+
+        if save_artifacts:
+            target_dir = Path(output_dir) if output_dir else self.config.repo_root / "output"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            orchestrator.save_plan_and_evidence(plan, bundle, target_dir)
+            with open(target_dir / f"{plan.question_id}_final_answer.json", "w", encoding="utf-8") as f:
+                json.dump(final_answer.to_dict(), f, indent=2)
+
+        return final_answer
 
 
 # ============================================================================
@@ -357,3 +457,34 @@ def ask_question(query: str, data_type: DataType) -> None:
     query_engine = QueryEngine(config)
     query_engine.query(query, data_type)
 
+
+def ask_typed_question(
+    query: str,
+    data_type: DataType,
+    *,
+    rerank: bool = False,
+    use_llm: bool = True,
+    save_artifacts: bool = True,
+    output_dir: Optional[Path] = None,
+):
+    """
+    Run the full Typed-RAG pipeline and return the aggregated answer.
+
+    Args:
+        query: The question to ask.
+        data_type: Backend/source configuration.
+        rerank: Enable cross-encoder reranking.
+        use_llm: Use Gemini for generation/aggregation (fallback otherwise).
+        save_artifacts: Persist plan/evidence/final JSON to disk.
+        output_dir: Directory for saved artifacts (defaults to ./output).
+    """
+    config = RAGConfig.default()
+    query_engine = QueryEngine(config)
+    return query_engine.typed_query(
+        query,
+        data_type,
+        rerank=rerank,
+        use_llm=use_llm,
+        save_artifacts=save_artifacts,
+        output_dir=output_dir,
+    )
