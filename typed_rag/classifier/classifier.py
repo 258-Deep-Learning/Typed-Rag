@@ -16,6 +16,8 @@ import re
 from typing import Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
 
+from typed_rag.core.keys import get_fastest_model
+
 
 class QuestionType:
     """Enumeration of question types."""
@@ -38,7 +40,7 @@ class QuestionClassifier:
     2. LLM-based classification for ambiguous cases (accurate)
     """
 
-    def __init__(self, use_llm: bool = True, model_name: str = "gemini-2.5-flash-lite"):
+    def __init__(self, use_llm: bool = True, model_name=None):
         """
         Initialize the classifier.
 
@@ -47,7 +49,7 @@ class QuestionClassifier:
             model_name: Gemini model to use for classification
         """
         self.use_llm = use_llm
-        self.model_name = model_name
+        self.model_name = get_fastest_model()
         self._llm = None
 
         # Compile regex patterns for efficiency

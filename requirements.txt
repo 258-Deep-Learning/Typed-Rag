@@ -21,6 +21,7 @@ rank-bm25>=0.2.2
 
 # Document parsing (recommended - uncomment to install)
 PyPDF2>=3.0.0          # For PDF support
+pycryptodome>=3.18.0   # For encrypted PDFs
 python-docx>=0.8.11    # For DOCX support
 beautifulsoup4>=4.12.0 # For HTML support
 lxml>=4.9.0            # For better HTML parsing
@@ -34,4 +35,5 @@ langchain>=0.2.16
 langchain-community>=0.2.16
 langchain-google-genai>=2.0.0
 langchain-pinecone>=0.2.0
+pytest
 

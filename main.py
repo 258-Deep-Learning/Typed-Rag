@@ -39,6 +39,7 @@ from typed_rag.rag_system import (
     DataType,           # Main data type class
     create_index,       # Build index function
     ask_question,       # Query function
+    ask_typed_question, # Typed pipeline
     detect_default_backend,  # Helper function
     RAGConfig,          # Configuration (advanced usage)
     IndexBuilder,       # Builder class (advanced usage)
@@ -50,6 +51,7 @@ __all__ = [
     'DataType',
     'create_index',
     'ask_question',
+    'ask_typed_question',
     'detect_default_backend',
     'RAGConfig',
     'IndexBuilder',
@@ -88,7 +90,7 @@ def _interactive_menu() -> int:
             source = _prompt_source()
             data_type = DataType("pinecone", source)
             print(f"\n🔨 Building PINECONE index for {source}...")
-            create_index(data_type, rebuild=False)
+            create_index(data_type, rebuild=True)
             print("\n✅ Build complete.")
             return 0
 
@@ -96,7 +98,7 @@ def _interactive_menu() -> int:
             source = _prompt_source()
             data_type = DataType("faiss", source)
             print(f"\n🔨 Building FAISS index for {source}...")
-            create_index(data_type, rebuild=False)
+            create_index(data_type, rebuild=True)
             print("\n✅ Build complete.")
             return 0
 

@@ -5,9 +5,11 @@ Usage: python3 ask.py "What is Amazon's revenue?"
 """
 import os
 import sys
+
+from typed_rag.core.keys import get_fastest_model
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "typed_rag"))
-from retrieval.pipeline import BGEEmbedder, PineconeDenseStore, LCBGEEmbeddings  # type: ignore
-from langchain_community.vectorstores import FAISS as LCFAISS  # type: ignore
+from retrieval.pipeline import BGEEmbedder, PineconeDenseStore, load_faiss_adapter  # type: ignore
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
 load_dotenv()
@@ -20,7 +22,7 @@ DEFAULT_VECTOR_STORE = "pinecone"
 DEFAULT_PINECONE_INDEX = "typedrag-own"
 DEFAULT_PINECONE_NAMESPACE = "own_docs"
 DEFAULT_FAISS_DIR = os.path.join(os.path.dirname(__file__), "typed_rag", "indexes", "faiss")
-DEFAULT_MODEL_NAME = "gemini-2.5-flash-lite"
+DEFAULT_MODEL_NAME =get_fastest_model()
 RETRIEVAL_TOP_K = 5
 
 
@@ -41,26 +43,6 @@ def validate_api_keys(vector_store: str) -> str:
             sys.exit(1)
 
     return google_key
-
-
-def load_faiss_store(faiss_dir: str, embedder: "BGEEmbedder") -> "LCFAISS":
-    """Load a local FAISS index via LangChain, or exit with a friendly message."""
-    if not os.path.isdir(faiss_dir):
-        print(
-            "❌ FAISS directory not found. Expected at:\n"
-            f"   dir: {faiss_dir}\n"
-            "Build it first (e.g., via main.py FAISS flow)."
-        )
-        sys.exit(1)
-
-    lc_embeddings = LCBGEEmbeddings(embedder)
-    try:
-        return LCFAISS.load_local(faiss_dir, lc_embeddings, allow_dangerous_deserialization=True)
-    except Exception as e:
-        print(f"❌ Failed to load FAISS store from {faiss_dir}: {e}")
-        sys.exit(1)
-
-
 def print_passages(results: list) -> None:
     """Pretty-print retrieved passages for quick inspection."""
     print("📄 Retrieved Passages:")
@@ -117,31 +99,20 @@ def make_retrieval_fn(
     The returned function has the signature: (question: str, top_k: int) -> list
     """
     if vector_store == "faiss":
-        lc_store = load_faiss_store(faiss_dir, embedder)
-
-        def retrieve(question: str, top_k: int) -> list:
-            try:
-                lc_results = lc_store.similarity_search_with_score(question, k=top_k)
-            except Exception as e:
-                print(f"❌ FAISS query failed: {e}")
-                sys.exit(1)
-            results = []
-            for doc, score in lc_results:
-                md = dict(doc.metadata or {})
-                text = doc.page_content or ""
-                if "text" not in md:
-                    md["text"] = text
-                rec_id = md.get("id") or md.get("doc_id") or ""
-                results.append({"id": rec_id, "score": float(score), "metadata": md})
-            return results
-
-        return retrieve
-
-    store = PineconeDenseStore(
-        index_name=pinecone_index,
-        namespace=pinecone_namespace,
-        create_if_missing=False,
-    )
+        if not os.path.isdir(faiss_dir):
+            print(
+                "❌ FAISS directory not found. Expected at:\n"
+                f"   dir: {faiss_dir}\n"
+                "Build it first (e.g., via main.py FAISS flow)."
+            )
+            sys.exit(1)
+        store = load_faiss_adapter(faiss_dir, embedder)
+    else:
+        store = PineconeDenseStore(
+            index_name=pinecone_index,
+            namespace=pinecone_namespace,
+            create_if_missing=False,
+        )
 
     def retrieve(question: str, top_k: int) -> list:
         query_vec = embedder.encode_queries([question])

@@ -1,5 +1,7 @@
 # AGENTS.md file
 
+Generate Concise code
+
 ## How to create project
 This entire project is based on the paper paper.txt 
 I have include a option for adding a custom pdf
