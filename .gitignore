@@ -65,3 +65,6 @@ temp/
 
 
 env
+
+# project_plan.txt in the same root directory
+project_plan.txt
