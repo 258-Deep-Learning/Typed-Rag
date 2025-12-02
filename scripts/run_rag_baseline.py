@@ -247,6 +247,10 @@ def main():
         elapsed = time.time() - start
         total_time += elapsed
         
+        # Rate limiting for Gemini (15 RPM limit)
+        if not is_hf and elapsed < 4.0:
+            time.sleep(4.5 - elapsed)
+        
         result = {
             "question_id": q.question_id,
             "question": q.question,
