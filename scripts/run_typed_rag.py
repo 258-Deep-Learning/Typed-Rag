@@ -70,6 +70,12 @@ def main():
         action="store_true",
         help="Disable LLM (use fallback)"
     )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Model to use (e.g., gemini-2.0-flash-lite or meta-llama/Llama-3.2-3B-Instruct)"
+    )
     
     args = parser.parse_args()
     
@@ -107,8 +113,13 @@ def main():
     
     # Setup data type
     data_type = DataType(args.backend, args.source)
-    model_name = get_fastest_model()
+    model_name = args.model if args.model else get_fastest_model()
+    is_hf = "/" in model_name
     print(f"📦 Using model: {model_name}")
+    if is_hf:
+        print(f"📦 Using HuggingFace Inference API")
+    else:
+        print(f"📦 Using Gemini API")
     
     # Create output directory
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -132,6 +143,7 @@ def main():
             result = ask_typed_question(
                 q.question,
                 data_type,
+                model_name=model_name,
                 rerank=args.rerank,
                 use_llm=not args.no_llm,
                 save_artifacts=True,
