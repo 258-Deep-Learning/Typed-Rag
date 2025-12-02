@@ -62,9 +62,25 @@ models/
 *.tmp
 temp/
 
-
-
+# Virtual environment (alternate names)
 env
 
-# project_plan.txt in the same root directory
+# Experiment outputs and caches
+output/
+cache/
+runs/
+
+# Project planning docs (personal)
 project_plan.txt
+weekend1.md
+agents.md
+
+# Large index files
+indexes/
+
+# Personal documents
+my-documents/
+
+# Data files (keep structure, ignore content)
+data/wiki_nfqa/*.jsonl
+data/passages.jsonl

@@ -3,7 +3,7 @@ import os
 
 def get_gemini_keys():
     try:
-        api_key1 = os.getenv('GEMINI_API_KEY')
+        api_key1 = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
     except KeyError:
         raise KeyError('GEMINI_API_KEY not set')
     return api_key1
