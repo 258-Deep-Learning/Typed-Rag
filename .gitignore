@@ -69,6 +69,7 @@ env
 output/
 cache/
 runs/
+results/
 
 # Project planning docs (personal)
 project_plan.txt
