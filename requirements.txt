@@ -38,3 +38,6 @@ langchain-google-genai>=2.0.0
 langchain-pinecone>=0.2.0
 pytest
 
+# UI/Demo
+streamlit>=1.51.0
+

@@ -124,8 +124,8 @@ class RAGConfig:
         elif source == "wikipedia":
             return {
                 "docs_dir": None,  # Wikipedia doesn't have docs dir
-                "chunks_jsonl": self.repo_root / "typed_rag" / "data" / "passages.jsonl",
-                "faiss_dir": self.repo_root / "typed_rag" / "indexes" / "faiss_wiki",
+                "chunks_jsonl": self.repo_root / "data" / "passages.jsonl",
+                "faiss_dir": self.repo_root / "indexes" / "wikipedia" / "faiss",
                 "pinecone_index": "typedrag-wiki",
                 "pinecone_namespace": "wikipedia",
             }
