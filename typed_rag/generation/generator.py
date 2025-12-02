@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from langchain_google_genai import ChatGoogleGenerativeAI
+from huggingface_hub import InferenceClient
 
 from typed_rag.decompose.query_decompose import DecompositionPlan
 from typed_rag.retrieval.orchestrator import AspectEvidence, EvidenceBundle
@@ -82,26 +83,33 @@ class TypedAnswerGenerator:
         use_llm: bool = True,
     ) -> None:
         self.model_name = get_fastest_model()  or model_name
+        self.is_hf = "/" in self.model_name
         self.cache_dir = Path(cache_dir or "./cache/answers")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.max_snippets = max_snippets
         self.temperature = temperature
         self.use_llm = use_llm
-        self._llm: Optional[ChatGoogleGenerativeAI] = None
+        self._llm = None
 
     # ------------------------------------------------------------------ #
     # LLM helpers
     # ------------------------------------------------------------------ #
-    def _get_llm(self) -> ChatGoogleGenerativeAI:
+    def _get_llm(self):
         if self._llm is None:
-            google_api_key = os.getenv("GOOGLE_API_KEY")
-            if not google_api_key:
-                raise EnvironmentError("GOOGLE_API_KEY not set")
-            self._llm = ChatGoogleGenerativeAI(
-                model=self.model_name,
-                google_api_key=google_api_key,
-                temperature=self.temperature,
-            )
+            if self.is_hf:
+                hf_token = os.getenv("HF_TOKEN")
+                if not hf_token:
+                    raise EnvironmentError("HF_TOKEN not set")
+                self._llm = InferenceClient(token=hf_token)
+            else:
+                google_api_key = os.getenv("GOOGLE_API_KEY")
+                if not google_api_key:
+                    raise EnvironmentError("GOOGLE_API_KEY not set")
+                self._llm = ChatGoogleGenerativeAI(
+                    model=self.model_name,
+                    google_api_key=google_api_key,
+                    temperature=self.temperature,
+                )
         return self._llm
 
     def _invoke_llm(self, prompt: str) -> str:
@@ -109,8 +117,16 @@ class TypedAnswerGenerator:
             raise RuntimeError("LLM usage disabled")
 
         llm = self._get_llm()
-        response = llm.invoke(prompt)
-        return str(getattr(response, "content", response)).strip()
+        if self.is_hf:
+            response = llm.chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                model=self.model_name,
+                max_tokens=500
+            )
+            return response.choices[0].message.content.strip()
+        else:
+            response = llm.invoke(prompt)
+            return str(getattr(response, "content", response)).strip()
 
     # ------------------------------------------------------------------ #
     # Caching utilities

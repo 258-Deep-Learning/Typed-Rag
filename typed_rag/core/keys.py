@@ -11,3 +11,7 @@ def get_gemini_keys():
 def get_fastest_model():
     model_name = 'gemini-2.0-flash-lite'
     return model_name
+
+def is_huggingface_model(model_name: str) -> bool:
+    """Check if model name is in HuggingFace format (contains '/')."""
+    return "/" in model_name

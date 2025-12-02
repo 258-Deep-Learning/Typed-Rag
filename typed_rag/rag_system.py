@@ -343,6 +343,8 @@ class QueryEngine:
         self,
         question: str,
         data_type: DataType,
+        *,
+        model_name: Optional[str] = None,
         rerank: bool = False,
         use_llm: bool = True,
         save_artifacts: bool = True,
@@ -354,6 +356,7 @@ class QueryEngine:
         Args:
             question: User question.
             data_type: Backend/source selection.
+            model_name: Model to use (e.g., gemini-2.0-flash-lite or meta-llama/Llama-3.2-3B-Instruct).
             rerank: Enable cross-encoder reranking.
             use_llm: Enable Gemini calls (falls back to heuristic otherwise).
             save_artifacts: Persist plan/evidence/final answer to disk.
@@ -389,12 +392,14 @@ class QueryEngine:
         )
 
         generator = TypedAnswerGenerator(
+            model_name=model_name,
             cache_dir=self.config.repo_root / "cache" / "answers",
             use_llm=use_llm,
         )
         aspect_answers = generator.generate(plan, bundle)
 
         aggregator = TypedAnswerAggregator(
+            model_name=model_name,
             cache_dir=self.config.repo_root / "cache" / "final_answers",
             use_llm=use_llm,
         )
@@ -462,6 +467,7 @@ def ask_typed_question(
     query: str,
     data_type: DataType,
     *,
+    model_name: Optional[str] = None,
     rerank: bool = False,
     use_llm: bool = True,
     save_artifacts: bool = True,
@@ -473,6 +479,7 @@ def ask_typed_question(
     Args:
         query: The question to ask.
         data_type: Backend/source configuration.
+        model_name: Model to use (e.g., gemini-2.0-flash-lite or meta-llama/Llama-3.2-3B-Instruct).
         rerank: Enable cross-encoder reranking.
         use_llm: Use Gemini for generation/aggregation (fallback otherwise).
         save_artifacts: Persist plan/evidence/final JSON to disk.
@@ -483,6 +490,7 @@ def ask_typed_question(
     return query_engine.typed_query(
         query,
         data_type,
+        model_name=model_name,
         rerank=rerank,
         use_llm=use_llm,
         save_artifacts=save_artifacts,

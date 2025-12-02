@@ -29,6 +29,7 @@ lxml>=4.9.0            # For better HTML parsing
 # LLM APIs
 google-generativeai>=0.3.0  # For Gemini (Recommended)
 openai>=1.0.0               # For OpenAI (Alternative)
+huggingface_hub>=0.20.0     # For HuggingFace Inference API (Open Source Models)
 
 # LangChain ecosystem
 langchain>=0.2.16

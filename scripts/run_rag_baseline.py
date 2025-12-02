@@ -35,6 +35,12 @@ from typed_rag.retrieval.pipeline import BGEEmbedder, LCBGEEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
+from huggingface_hub import InferenceClient
+
+
+def is_huggingface_model(model_name: str) -> bool:
+    """Check if model is from HuggingFace."""
+    return "/" in model_name  # HF models have format "org/model-name"
 
 
 def create_passages_from_questions(questions: List[WikiNFQAQuestion]) -> List[Dict[str, Any]]:
@@ -97,7 +103,7 @@ def retrieve_context(question: str, vectorstore: FAISS, top_k: int = 3) -> str:
     return "\n\n".join(context_parts)
 
 
-def generate_answer_with_rag(question: str, context: str, llm) -> str:
+def generate_answer_with_rag(question: str, context: str, llm, is_hf: bool = False) -> str:
     """Generate answer using retrieved context."""
     prompt = f"""Answer the question based on the provided context. Be concise and factual.
 
@@ -108,8 +114,17 @@ Question: {question}
 
 Answer:"""
     
-    response = llm.invoke(prompt)
-    return response.content.strip()
+    if is_hf:
+        # HuggingFace API
+        response = llm.chat_completion(
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=500
+        )
+        return response.choices[0].message.content.strip()
+    else:
+        # Gemini API
+        response = llm.invoke(prompt)
+        return response.content.strip()
 
 
 def main():
@@ -155,15 +170,31 @@ def main():
     model_name = args.model or get_fastest_model()
     print(f"📦 Loading model: {model_name}")
     
-    google_api_key = os.getenv("GOOGLE_API_KEY")
-    if not google_api_key:
-        raise EnvironmentError("GOOGLE_API_KEY not set in .env file")
+    is_hf = is_huggingface_model(model_name)
     
-    llm = ChatGoogleGenerativeAI(
-        model=model_name,
-        google_api_key=google_api_key,
-        temperature=0.0
-    )
+    if is_hf:
+        # HuggingFace model
+        hf_token = os.getenv("HF_TOKEN")
+        if not hf_token:
+            raise EnvironmentError("HF_TOKEN not set in .env file")
+        
+        llm = InferenceClient(
+            model=model_name,
+            token=hf_token
+        )
+        print(f"✓ Using HuggingFace Inference API")
+    else:
+        # Gemini model
+        google_api_key = os.getenv("GOOGLE_API_KEY")
+        if not google_api_key:
+            raise EnvironmentError("GOOGLE_API_KEY not set in .env file")
+        
+        llm = ChatGoogleGenerativeAI(
+            model=model_name,
+            google_api_key=google_api_key,
+            temperature=0.0
+        )
+        print(f"✓ Using Google Gemini API")
     
     # Load questions
     print(f"📂 Loading questions from: {args.input}")
@@ -211,7 +242,7 @@ def main():
         context = retrieve_context(q.question, vectorstore, top_k=args.top_k)
         
         # Generate answer
-        answer = generate_answer_with_rag(q.question, context, llm)
+        answer = generate_answer_with_rag(q.question, context, llm, is_hf=is_hf)
         
         elapsed = time.time() - start
         total_time += elapsed
