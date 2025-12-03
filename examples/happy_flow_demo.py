@@ -13,10 +13,14 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Dict, List
 
 from dotenv import load_dotenv
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from typed_rag.rag_system import DataType, ask_typed_question
 from examples.metrics_tracker import LinkageMetricsTracker
@@ -99,6 +103,7 @@ def run_demo(
     use_llm: bool,
     save_artifacts: bool,
     output_dir: Path | None,
+    model_name: str | None = None,
 ) -> None:
     """Execute the typed pipeline on sample questions covering all types."""
     data_type = DataType(backend, source)
@@ -110,6 +115,7 @@ def run_demo(
         f"Source  : {source}\n"
         f"Rerank  : {'on' if rerank else 'off'}\n"
         f"LLM     : {'on' if use_llm else 'fallback-only'}\n"
+        f"Model   : {model_name or 'default'}\n"
     )
 
     for qtype, question in QUESTIONS.items():
@@ -119,6 +125,7 @@ def run_demo(
             result = ask_typed_question(
                 question,
                 data_type,
+                model_name=model_name,
                 rerank=rerank,
                 use_llm=use_llm,
                 save_artifacts=save_artifacts,
@@ -187,6 +194,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Directory to persist artifacts (default: ./output)",
     )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Model name (e.g., meta-llama/Llama-3.2-3B-Instruct or gemini-2.0-flash-lite)",
+    )
     return parser.parse_args()
 
 
@@ -200,6 +213,7 @@ def main() -> int:
         use_llm=not args.no_llm,
         save_artifacts=not args.no_save,
         output_dir=args.output_dir,
+        model_name=args.model,
     )
     return 0
 
