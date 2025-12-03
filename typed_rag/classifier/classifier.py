@@ -60,12 +60,20 @@ class QuestionClassifier:
                 re.compile(r'\bhow\s+can\s+i\b', re.IGNORECASE),
                 re.compile(r'\bsteps\s+to\b', re.IGNORECASE),
                 re.compile(r'\bguide\s+to\b', re.IGNORECASE),
+                re.compile(r'^which\s+(film|director|person|actor)', re.IGNORECASE),
+                re.compile(r'\b(born|released|came out)\s+(earlier|later|first|more recently)\b', re.IGNORECASE),
+                re.compile(r'\bhow\s+(did|were|was)\b', re.IGNORECASE),
+                re.compile(r'\bexpelled\s+from\b', re.IGNORECASE),
             ],
             QuestionType.REASON: [
                 re.compile(r'\bwhy\b', re.IGNORECASE),
                 re.compile(r'\bwhat\s+causes\b', re.IGNORECASE),
+                re.compile(r'\bwhat\s+is\s+the\s+cause\b', re.IGNORECASE),
                 re.compile(r'\bwhat\s+is\s+the\s+reason\b', re.IGNORECASE),
+                re.compile(r'\bwhat\s+are\s+the\s+reasons\b', re.IGNORECASE),
+                re.compile(r'\bcause\s+of\s+death\b', re.IGNORECASE),
                 re.compile(r'\bexplain\s+why\b', re.IGNORECASE),
+                re.compile(r'\bsusceptible\s+to\b', re.IGNORECASE),
             ],
             QuestionType.COMPARISON: [
                 re.compile(r'\bversus\b', re.IGNORECASE),
@@ -74,6 +82,9 @@ class QuestionClassifier:
                 re.compile(r'\bcompare\b', re.IGNORECASE),
                 re.compile(r'\bdifference\s+between\b', re.IGNORECASE),
                 re.compile(r'\bwhich\s+is\s+better\b', re.IGNORECASE),
+                re.compile(r'\badvantages?\s+over\b', re.IGNORECASE),
+                re.compile(r'\bdiffer\s+from\b', re.IGNORECASE),
+                re.compile(r'\bhow\s+do\s+.+\s+differ\b', re.IGNORECASE),
             ],
             QuestionType.EXPERIENCE: [
                 re.compile(r'\bshould\s+i\b', re.IGNORECASE),
@@ -81,6 +92,8 @@ class QuestionClassifier:
                 re.compile(r'\brecommend\b', re.IGNORECASE),
                 re.compile(r'\bwhat\s+do\s+you\s+think\b', re.IGNORECASE),
                 re.compile(r'\byour\s+experience\b', re.IGNORECASE),
+                re.compile(r'\bwhat\s+(is|was)\s+unique\b', re.IGNORECASE),
+                re.compile(r'\bthe\s+best\s+known\b', re.IGNORECASE),
             ],
             QuestionType.DEBATE: [
                 re.compile(r'\bargue\b', re.IGNORECASE),
@@ -89,6 +102,12 @@ class QuestionClassifier:
                 re.compile(r'\badvantages\s+and\s+disadvantages\b', re.IGNORECASE),
                 re.compile(r'\bdebate\b', re.IGNORECASE),
                 re.compile(r'\bdifferent\s+perspectives\b', re.IGNORECASE),
+                re.compile(r'^(are|do|does|is)\s+both\b', re.IGNORECASE),
+                re.compile(r'^would\s+you\b', re.IGNORECASE),
+                re.compile(r'\bwhat\s+(is|are)\s+(necessary|required|needed)\b', re.IGNORECASE),
+                re.compile(r'\bwhat\s+should\b', re.IGNORECASE),
+                re.compile(r'\bwhat\s+(needs|has)\s+to\b', re.IGNORECASE),
+                re.compile(r'\b(best|worst|misleading)\b', re.IGNORECASE),
             ],
         }
 
