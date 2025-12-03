@@ -349,6 +349,10 @@ class QueryEngine:
         use_llm: bool = True,
         save_artifacts: bool = True,
         output_dir: Optional[Path] = None,
+        # Ablation study flags (default True = full pipeline)
+        use_classification: bool = True,
+        use_decomposition: bool = True,
+        use_retrieval: bool = True,
     ):
         """
         Execute the full Typed-RAG pipeline and return the aggregated answer.
@@ -361,6 +365,9 @@ class QueryEngine:
             use_llm: Enable Gemini calls (falls back to heuristic otherwise).
             save_artifacts: Persist plan/evidence/final answer to disk.
             output_dir: Directory for persisted artifacts (defaults to ./output).
+            use_classification: Enable classification (for ablation study).
+            use_decomposition: Enable decomposition (for ablation study).
+            use_retrieval: Enable retrieval (for ablation study).
         """
         self.config.validate_env(data_type.type)
         paths = self.config.get_paths_for_source(data_type.source)
@@ -370,26 +377,56 @@ class QueryEngine:
         vector_store = self._load_vector_store(data_type, paths, embedder)
 
         # Typed pipeline steps
-        question_type = classify_question(question, use_llm=use_llm)
-        plan = decompose_question(
-            question,
-            question_type,
-            cache_dir=self.config.repo_root / "cache" / "decomposition",
-        )
+        # Step 1: Classification (can be disabled for ablation)
+        if use_classification:
+            question_type = classify_question(question, use_llm=use_llm)
+        else:
+            # Ablation: force Evidence-based (fallback type)
+            question_type = "Evidence-based"
+        
+        # Step 2: Decomposition (can be disabled for ablation)
+        if use_decomposition:
+            plan = decompose_question(
+                question,
+                question_type,
+                cache_dir=self.config.repo_root / "cache" / "decomposition",
+            )
+        else:
+            # Ablation: create minimal plan with single aspect (full question)
+            from typed_rag.decompose.query_decompose import TypedPlan, SubQuery
+            import hashlib
+            question_id = hashlib.md5(question.encode()).hexdigest()[:12]
+            plan = TypedPlan(
+                question_id=question_id,
+                question=question,
+                question_type=question_type,
+                sub_queries=[SubQuery(aspect="full_question", query=question)],
+            )
 
-        orchestrator = RetrievalOrchestrator(
-            embedder=embedder,
-            vector_store=vector_store,
-            vector_store_type=data_type.type,
-            cache_dir=self.config.repo_root / "cache" / "evidence",
-            rerank=rerank,
-        )
+        # Step 3: Retrieval (can be disabled for ablation)
+        if use_retrieval:
+            orchestrator = RetrievalOrchestrator(
+                embedder=embedder,
+                vector_store=vector_store,
+                vector_store_type=data_type.type,
+                cache_dir=self.config.repo_root / "cache" / "evidence",
+                rerank=rerank,
+            )
 
-        bundle = orchestrator.retrieve_evidence(
-            plan,
-            use_cache=True,
-            final_top_k=self.config.top_k,
-        )
+            bundle = orchestrator.retrieve_evidence(
+                plan,
+                use_cache=True,
+                final_top_k=self.config.top_k,
+            )
+        else:
+            # Ablation: create empty evidence bundle (pure LLM mode)
+            from typed_rag.retrieval.orchestrator import EvidenceBundle
+            bundle = EvidenceBundle(
+                question_id=plan.question_id,
+                question=plan.question,
+                question_type=plan.question_type,
+                aspect_evidence={},
+            )
 
         generator = TypedAnswerGenerator(
             model_name=model_name,
@@ -472,6 +509,10 @@ def ask_typed_question(
     use_llm: bool = True,
     save_artifacts: bool = True,
     output_dir: Optional[Path] = None,
+    # Ablation study flags
+    use_classification: bool = True,
+    use_decomposition: bool = True,
+    use_retrieval: bool = True,
 ):
     """
     Run the full Typed-RAG pipeline and return the aggregated answer.
@@ -484,6 +525,9 @@ def ask_typed_question(
         use_llm: Use Gemini for generation/aggregation (fallback otherwise).
         save_artifacts: Persist plan/evidence/final JSON to disk.
         output_dir: Directory for saved artifacts (defaults to ./output).
+        use_classification: Enable classification step (default True).
+        use_decomposition: Enable decomposition step (default True).
+        use_retrieval: Enable retrieval step (default True).
     """
     config = RAGConfig.default()
     query_engine = QueryEngine(config)
@@ -495,4 +539,7 @@ def ask_typed_question(
         use_llm=use_llm,
         save_artifacts=save_artifacts,
         output_dir=output_dir,
+        use_classification=use_classification,
+        use_decomposition=use_decomposition,
+        use_retrieval=use_retrieval,
     )
