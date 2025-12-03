@@ -1,122 +1,29 @@
 {
   "llm_only": {
     "overall": {
-      "mrr": 0.7222222222222222,
-      "mpr": 83.33333333333334,
-      "questions": 6
+      "mrr": 0.0,
+      "mpr": 0.0,
+      "questions": 0
     },
-    "by_category": {
-      "Evidence-based": {
-        "mrr": 1.0,
-        "mpr": 100.0,
-        "count": 1
-      },
-      "Comparison": {
-        "mrr": 0.5,
-        "mpr": 75.0,
-        "count": 1
-      },
-      "Experience": {
-        "mrr": 1.0,
-        "mpr": 100.0,
-        "count": 1
-      },
-      "Reason": {
-        "mrr": 1.0,
-        "mpr": 100.0,
-        "count": 1
-      },
-      "Instruction": {
-        "mrr": 0.5,
-        "mpr": 75.0,
-        "count": 1
-      },
-      "Debate": {
-        "mrr": 0.3333333333333333,
-        "mpr": 50.0,
-        "count": 1
-      }
-    },
-    "llm_scoring": true
+    "by_category": {},
+    "llm_scoring": false
   },
   "rag_baseline": {
     "overall": {
-      "mrr": 0.9166666666666666,
-      "mpr": 95.83333333333334,
-      "questions": 6
+      "mrr": 0.0,
+      "mpr": 0.0,
+      "questions": 0
     },
-    "by_category": {
-      "Evidence-based": {
-        "mrr": 1.0,
-        "mpr": 100.0,
-        "count": 1
-      },
-      "Comparison": {
-        "mrr": 1.0,
-        "mpr": 100.0,
-        "count": 1
-      },
-      "Experience": {
-        "mrr": 1.0,
-        "mpr": 100.0,
-        "count": 1
-      },
-      "Reason": {
-        "mrr": 1.0,
-        "mpr": 100.0,
-        "count": 1
-      },
-      "Instruction": {
-        "mrr": 1.0,
-        "mpr": 100.0,
-        "count": 1
-      },
-      "Debate": {
-        "mrr": 0.5,
-        "mpr": 75.0,
-        "count": 1
-      }
-    },
-    "llm_scoring": true
+    "by_category": {},
+    "llm_scoring": false
   },
   "typed_rag": {
     "overall": {
-      "mrr": 0.3055555555555555,
-      "mpr": 37.5,
-      "questions": 6
+      "mrr": 0.0,
+      "mpr": 0.0,
+      "questions": 0
     },
-    "by_category": {
-      "Evidence-based": {
-        "mrr": 0.25,
-        "mpr": 25.0,
-        "count": 1
-      },
-      "Comparison": {
-        "mrr": 0.25,
-        "mpr": 25.0,
-        "count": 1
-      },
-      "Experience": {
-        "mrr": 0.25,
-        "mpr": 25.0,
-        "count": 1
-      },
-      "Reason": {
-        "mrr": 0.5,
-        "mpr": 75.0,
-        "count": 1
-      },
-      "Instruction": {
-        "mrr": 0.25,
-        "mpr": 25.0,
-        "count": 1
-      },
-      "Debate": {
-        "mrr": 0.3333333333333333,
-        "mpr": 50.0,
-        "count": 1
-      }
-    },
-    "llm_scoring": true
+    "by_category": {},
+    "llm_scoring": false
   }
 }

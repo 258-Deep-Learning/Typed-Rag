@@ -97,7 +97,9 @@ def run_ablation_variant(
                 model_name=model_name,
                 use_llm=True,
                 save_artifacts=False,
-                **flags,  # Pass ablation flags
+                use_classification=flags["use_classification"],
+                use_decomposition=flags["use_decomposition"],
+                use_retrieval=flags["use_retrieval"],
             )
             
             elapsed = time.time() - start_time
@@ -143,15 +145,21 @@ def run_ablation_variant(
 def main():
     parser = argparse.ArgumentParser(description="Run Typed-RAG ablation study")
     parser.add_argument("--input", required=True, help="Input JSONL file with questions")
-    parser.add_argument("--output", required=True, help="Output directory for results")
+    parser.add_argument("--output", help="Output directory for results")
+    parser.add_argument("--output-dir", help="Output directory for results (alias for --output)")
     parser.add_argument("--source", default="wikipedia", choices=["wikipedia", "own_docs"], help="Data source")
     parser.add_argument("--backend", default="faiss", choices=["faiss", "pinecone"], help="Vector store backend")
-    parser.add_argument("--model", default=None, help="Model name (defaults to gemini-2.0-flash-lite)")
+    parser.add_argument("--model", default=None, help="Model name (e.g., meta-llama/Llama-3.2-3B-Instruct or gemini-2.0-flash-lite)")
     parser.add_argument("--variants", nargs="+", 
                         default=["full", "no_classification", "no_decomposition", "no_retrieval"],
                         help="Variants to run")
     
     args = parser.parse_args()
+    
+    # Handle output directory (accept either --output or --output-dir)
+    output_dir_str = args.output_dir or args.output
+    if not output_dir_str:
+        raise ValueError("Must specify either --output or --output-dir")
     
     # Load questions
     print(f"📂 Loading questions from: {args.input}")
@@ -170,7 +178,7 @@ def main():
     print(f"✓ Loaded {len(questions)} questions\n")
     
     # Create output directory
-    output_dir = Path(args.output)
+    output_dir = Path(output_dir_str)
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Configure data type

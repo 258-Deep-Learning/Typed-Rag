@@ -393,14 +393,14 @@ class QueryEngine:
             )
         else:
             # Ablation: create minimal plan with single aspect (full question)
-            from typed_rag.decompose.query_decompose import TypedPlan, SubQuery
+            from typed_rag.decompose.query_decompose import DecompositionPlan, SubQuery
             import hashlib
             question_id = hashlib.md5(question.encode()).hexdigest()[:12]
-            plan = TypedPlan(
+            plan = DecompositionPlan(
                 question_id=question_id,
-                question=question,
+                original_question=question,
                 question_type=question_type,
-                sub_queries=[SubQuery(aspect="full_question", query=question)],
+                sub_queries=[SubQuery(aspect="full_question", query=question, strategy="evidence")],
             )
 
         # Step 3: Retrieval (can be disabled for ablation)
@@ -423,9 +423,9 @@ class QueryEngine:
             from typed_rag.retrieval.orchestrator import EvidenceBundle
             bundle = EvidenceBundle(
                 question_id=plan.question_id,
-                question=plan.question,
+                original_question=plan.original_question,
                 question_type=plan.question_type,
-                aspect_evidence={},
+                evidence=[],
             )
 
         generator = TypedAnswerGenerator(
