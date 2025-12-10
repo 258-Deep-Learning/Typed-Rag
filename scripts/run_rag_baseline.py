@@ -43,8 +43,18 @@ def is_huggingface_model(model_name: str) -> bool:
     return "/" in model_name  # HF models have format "org/model-name"
 
 
-def create_passages_from_questions(questions: List[WikiNFQAQuestion]) -> List[Dict[str, Any]]:
-    """Create synthetic Wikipedia-style passages from questions and reference answers."""
+def create_passages_from_questions(questions: List[WikiNFQAQuestion], use_references: bool = False) -> List[Dict[str, Any]]:
+    """
+    Create synthetic Wikipedia-style passages from questions.
+    
+    Args:
+        questions: List of questions to create passages from
+        use_references: If True, uses reference answers (for upper-bound baseline).
+                       If False, returns empty passages (requires external knowledge base).
+    
+    Note: Using reference answers creates an unrealistic upper-bound baseline
+          because it retrieves the ground truth answers at test time.
+    """
     passages = []
     
     for i, q in enumerate(questions, 1):
@@ -56,14 +66,18 @@ def create_passages_from_questions(questions: List[WikiNFQAQuestion]) -> List[Di
         if len(title) > 60:
             title = title[:57] + "..."
         
-        # Use reference answers as passage content
-        text = " ".join(q.reference_answers[:3])
+        # Use reference answers as passage content (if enabled)
+        if use_references:
+            text = " ".join(q.reference_answers[:3])
+        else:
+            # Without references, this would need an external knowledge base
+            text = ""
         
         passage = {
             "id": passage_id,
             "title": title,
             "text": text,
-            "source": "wiki_nfqa_synthetic",
+            "source": "wiki_nfqa_synthetic" if use_references else "empty",
             "question_id": q.question_id,
             "category": q.category
         }
@@ -153,18 +167,39 @@ def main():
         default=3,
         help="Number of passages to retrieve"
     )
+    parser.add_argument(
+        "--backend",
+        type=str,
+        default="faiss",
+        choices=["faiss", "references"],
+        help="Backend to use: 'faiss' for Wikipedia index, 'references' for upper-bound baseline"
+    )
+    parser.add_argument(
+        "--source",
+        type=str,
+        default="wikipedia",
+        help="Source name (only used with --backend faiss)"
+    )
     
     args = parser.parse_args()
     
     # Setup
     print("="*60)
-    print("Vanilla RAG Baseline (In-Memory FAISS)")
+    if args.backend == "references":
+        print("Vanilla RAG Baseline (Upper-Bound with Reference Answers)")
+        print("⚠️  WARNING: Using reference answers as knowledge base!")
+    else:
+        print(f"Vanilla RAG Baseline (Wikipedia FAISS)")
     print("="*60)
     print("\n📋 Pipeline Steps:")
-    print("  1. Create synthetic passages from reference answers")
-    print("  2. Build FAISS index in memory")
-    print("  3. Retrieve top-k passages for each question")
-    print("  4. Generate answers using retrieved context\n")
+    if args.backend == "references":
+        print("  1. Create synthetic passages from reference answers")
+        print("     (⚠️  This uses ground truth - unrealistic baseline!)")
+        print("  2. Build FAISS index in memory")
+    else:
+        print(f"  1. Load pre-built FAISS index from indexes/{args.source}/faiss/")
+    print("  2. Retrieve top-k passages for each question")
+    print("  3. Generate answers using retrieved context\n")
     
     # Load model
     model_name = args.model or get_fastest_model()
@@ -212,25 +247,45 @@ def main():
     
     print(f"✓ Loaded {len(questions)} questions")
     
-    # Step 1: Create passages
-    print(f"\n📝 Step 1: Creating synthetic passages...")
-    passages = create_passages_from_questions(questions)
-    print(f"✓ Created {len(passages)} passages")
-    
-    # Step 2: Build FAISS index
-    print(f"\n🔨 Step 2: Building FAISS index with BGE embeddings...")
-    embedder = BGEEmbedder(device=None)
-    vectorstore = build_faiss_index(passages, embedder)
-    print(f"✓ FAISS index built with {len(passages)} documents")
+    # Load or build FAISS index
+    if args.backend == "references":
+        # Step 1: Create passages from references
+        print(f"\n📝 Step 1: Creating synthetic passages from reference answers...")
+        print(f"⚠️  Note: This creates an unrealistic upper-bound baseline")
+        passages = create_passages_from_questions(questions, use_references=True)
+        print(f"✓ Created {len(passages)} passages")
+        
+        # Step 2: Build FAISS index
+        print(f"\n🔨 Step 2: Building FAISS index with BGE embeddings...")
+        embedder = BGEEmbedder(device=None)
+        vectorstore = build_faiss_index(passages, embedder)
+        print(f"✓ FAISS index built with {len(passages)} documents")
+    else:
+        # Load pre-built Wikipedia FAISS
+        from typed_rag.retrieval.pipeline import load_faiss_adapter
+        
+        print(f"\n📦 Step 1: Loading pre-built FAISS index...")
+        faiss_dir = Path(f"indexes/{args.source}/faiss")
+        if not faiss_dir.exists():
+            print(f"❌ ERROR: FAISS index not found at {faiss_dir}")
+            print(f"   Please build the index first using: python typed_rag/scripts/build_faiss.py")
+            return
+        
+        embedder = BGEEmbedder(device=None)
+        faiss_adapter = load_faiss_adapter(str(faiss_dir), embedder)
+        
+        # Use the adapter's underlying LangChain store
+        vectorstore = faiss_adapter.store
+        print(f"✓ Loaded FAISS index")
     
     # Create output directory
     args.output.parent.mkdir(parents=True, exist_ok=True)
     
-    # Step 3 & 4: Retrieve and generate
+    # Step 2/3: Retrieve and generate
     results = []
     total_time = 0
     
-    print(f"\n🚀 Step 3 & 4: Retrieving context and generating answers...")
+    print(f"\n🚀 Step 2: Retrieving context and generating answers...")
     print("-"*60)
     
     for i, q in enumerate(questions, 1):
@@ -277,7 +332,10 @@ def main():
     print("Summary")
     print("="*60)
     print(f"Questions processed: {len(results)}")
-    print(f"Passages created: {len(passages)}")
+    if args.backend == "references":
+        print(f"Passages created: {len(passages)}")
+    else:
+        print(f"Knowledge source: Wikipedia FAISS index")
     print(f"Retrieval top-k: {args.top_k}")
     print(f"Total time: {total_time:.2f}s")
     print(f"Average latency: {total_time/len(results):.2f}s per question")
