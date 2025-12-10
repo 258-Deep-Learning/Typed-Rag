@@ -329,6 +329,94 @@ Key improvements over vanilla RAG:
 - ✅ Structured evidence organization
 - ✅ Higher relevance through targeted retrieval
 
+## 📊 Evaluation & Reproducibility
+
+### Generate Evaluation Plots
+
+Create publication-ready visualizations from evaluation results:
+
+```bash
+python scripts/create_evaluation_plots.py
+```
+
+Generates charts in `results/plots/`:
+- `ablation_latency.png` - Latency comparison across ablation variants
+- `ablation_success.png` - Success rates by variant
+- `mrr_mpr_comparison.png` - Quality metrics comparison
+- `classifier_performance.png` - Per-type classifier performance
+- `confusion_matrix.png` - Classification confusion matrix
+
+**Custom options**:
+```bash
+# Save as SVG (vector graphics)
+python scripts/create_evaluation_plots.py --format svg
+
+# Custom output directory
+python scripts/create_evaluation_plots.py --output my_plots/
+```
+
+### Profile System Performance
+
+Measure memory usage, throughput, and component-level latency:
+
+```bash
+python scripts/profile_performance.py \
+  --input data/wiki_nfqa/dev6.jsonl \
+  --output results/performance_profile.json
+```
+
+**Metrics captured**:
+- Throughput (questions/second)
+- Peak memory usage (MB)
+- Component latency breakdown
+- Success rates
+
+### View System Architecture
+
+See comprehensive system architecture with flow diagrams:
+- [Architecture Diagram](docs/architecture.md) - Mermaid diagrams showing pipeline flow, component interactions, and data flow
+
+### Reproduce All Results
+
+Step-by-step guide to reproduce evaluation results:
+- [Evaluation Guide](EVALUATION.md) - Complete instructions for running all evaluations, generating plots, and profiling performance
+
+### Capture UI Screenshots
+
+Instructions for documenting the Streamlit demo:
+- [Screenshots Guide](docs/screenshots.md) - Detailed guide for capturing professional UI screenshots
+
+### Quick Evaluation Pipeline
+
+Run complete evaluation in one command:
+
+```bash
+# Setup data and build index
+python scripts/setup_wiki_nfqa.py --split dev6
+python rag_cli.py build --backend faiss --source wikipedia
+
+# Run ablation study
+python scripts/run_ablation_study.py \
+  --input data/wiki_nfqa/dev6.jsonl \
+  --output results/ablation/
+
+# Evaluate quality metrics
+python scripts/evaluate_linkage.py \
+  --systems results/ablation/*.jsonl \
+  --output results/ablation_linkage_evaluation.json
+
+# Generate visualizations
+python scripts/create_evaluation_plots.py
+
+# Profile performance
+python scripts/profile_performance.py \
+  --input data/wiki_nfqa/dev6.jsonl \
+  --output results/performance_profile.json
+
+# View results in UI
+streamlit run app.py
+```
+
 ## 🔜 Future Enhancements
 
 1. **Learned Decomposition** - Train a model for optimal facet splitting
