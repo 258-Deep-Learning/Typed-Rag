@@ -15,6 +15,7 @@ import os
 import re
 from typing import Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
+from huggingface_hub import InferenceClient
 
 from typed_rag.core.keys import get_fastest_model
 
@@ -46,10 +47,11 @@ class QuestionClassifier:
 
         Args:
             use_llm: Whether to use LLM for classification (falls back to patterns if False)
-            model_name: Gemini model to use for classification
+            model_name: Model to use for classification (Gemini or HuggingFace)
         """
         self.use_llm = use_llm
-        self.model_name = get_fastest_model()
+        self.model_name = model_name or get_fastest_model()
+        self.is_hf = "/" in self.model_name
         self._llm = None
 
         # Compile regex patterns for efficiency
@@ -111,17 +113,26 @@ class QuestionClassifier:
             ],
         }
 
-    def _get_llm(self) -> ChatGoogleGenerativeAI:
+    def _get_llm(self):
         """Lazy-load the LLM."""
         if self._llm is None:
-            google_api_key = os.getenv("GOOGLE_API_KEY")
-            if not google_api_key:
-                raise EnvironmentError("GOOGLE_API_KEY not set")
-            self._llm = ChatGoogleGenerativeAI(
-                model=self.model_name,
-                google_api_key=google_api_key,
-                temperature=0.0  # Deterministic for classification
-            )
+            if self.is_hf:
+                hf_token = os.getenv("HF_TOKEN")
+                if not hf_token:
+                    raise EnvironmentError("HF_TOKEN not set")
+                self._llm = InferenceClient(
+                    model=self.model_name,
+                    token=hf_token
+                )
+            else:
+                google_api_key = os.getenv("GOOGLE_API_KEY")
+                if not google_api_key:
+                    raise EnvironmentError("GOOGLE_API_KEY not set")
+                self._llm = ChatGoogleGenerativeAI(
+                    model=self.model_name,
+                    google_api_key=google_api_key,
+                    temperature=0.0  # Deterministic for classification
+                )
         return self._llm
 
     def _classify_by_pattern(self, question: str) -> Optional[str]:
@@ -146,7 +157,7 @@ class QuestionClassifier:
 
     def _classify_by_llm(self, question: str) -> str:
         """
-        Classify using LLM (Gemini).
+        Classify using LLM (Gemini or HuggingFace).
 
         Args:
             question: The question to classify
@@ -168,8 +179,16 @@ class QuestionClassifier:
 
         try:
             llm = self._get_llm()
-            response = llm.invoke(prompt)
-            result = str(response.content).strip()
+            if self.is_hf:
+                response = llm.chat_completion(
+                    messages=[{"role": "user", "content": prompt}],
+                    model=self.model_name,
+                    max_tokens=50
+                )
+                result = response.choices[0].message.content.strip()
+            else:
+                response = llm.invoke(prompt)
+                result = str(response.content).strip()
 
             # Normalize the response to match our types
             for qtype in QuestionType.ALL_TYPES:
@@ -233,18 +252,19 @@ class QuestionClassifier:
         return QuestionType.EVIDENCE, "low"
 
 
-def classify_question(question: str, use_llm: bool = True) -> str:
+def classify_question(question: str, use_llm: bool = True, model_name: Optional[str] = None) -> str:
     """
     Convenience function to classify a single question.
 
     Args:
         question: The question to classify
         use_llm: Whether to use LLM for ambiguous cases
+        model_name: Model to use (Gemini or HuggingFace)
 
     Returns:
         Question type
     """
-    classifier = QuestionClassifier(use_llm=use_llm)
+    classifier = QuestionClassifier(use_llm=use_llm, model_name=model_name)
     return classifier.classify(question)
 
 

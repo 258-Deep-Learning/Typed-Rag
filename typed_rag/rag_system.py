@@ -379,7 +379,7 @@ class QueryEngine:
         # Typed pipeline steps
         # Step 1: Classification (can be disabled for ablation)
         if use_classification:
-            question_type = classify_question(question, use_llm=use_llm)
+            question_type = classify_question(question, use_llm=use_llm, model_name=model_name)
         else:
             # Ablation: force Evidence-based (fallback type)
             question_type = "Evidence-based"
@@ -390,6 +390,7 @@ class QueryEngine:
                 question,
                 question_type,
                 cache_dir=self.config.repo_root / "cache" / "decomposition",
+                model_name=model_name,
             )
         else:
             # Ablation: create minimal plan with single aspect (full question)

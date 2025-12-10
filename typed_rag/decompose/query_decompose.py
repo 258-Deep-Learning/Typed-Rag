@@ -12,6 +12,7 @@ from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import List, Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
+from huggingface_hub import InferenceClient
 
 from typed_rag.core.keys import get_fastest_model
 
@@ -97,21 +98,31 @@ Return ONLY a JSON array: [{{"aspect": "...", "query": "..."}}, ...]""",
     }
 
     def __init__(self, model_name=None, cache_dir: Optional[Path] = None):
-        self.model_name = get_fastest_model() or model_name
+        self.model_name = model_name or get_fastest_model()
+        self.is_hf = "/" in self.model_name
         self.cache_dir = Path(cache_dir) if cache_dir else Path("./cache/decomposition")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._llm = None
 
-    def _get_llm(self) -> ChatGoogleGenerativeAI:
+    def _get_llm(self):
         if self._llm is None:
-            google_api_key = os.getenv("GOOGLE_API_KEY")
-            if not google_api_key:
-                raise EnvironmentError("GOOGLE_API_KEY not set")
-            self._llm = ChatGoogleGenerativeAI(
-                model=self.model_name,
-                google_api_key=google_api_key,
-                temperature=0.3
-            )
+            if self.is_hf:
+                hf_token = os.getenv("HF_TOKEN")
+                if not hf_token:
+                    raise EnvironmentError("HF_TOKEN not set")
+                self._llm = InferenceClient(
+                    model=self.model_name,
+                    token=hf_token
+                )
+            else:
+                google_api_key = os.getenv("GOOGLE_API_KEY")
+                if not google_api_key:
+                    raise EnvironmentError("GOOGLE_API_KEY not set")
+                self._llm = ChatGoogleGenerativeAI(
+                    model=self.model_name,
+                    google_api_key=google_api_key,
+                    temperature=0.3
+                )
         return self._llm
 
     def _generate_question_id(self, question: str) -> str:
@@ -142,6 +153,8 @@ Return ONLY a JSON array: [{{"aspect": "...", "query": "..."}}, ...]""",
         content = content.strip()
         if "```json" in content:
             return content.split("```json")[1].split("```")[0].strip()
+        elif "```javascript" in content:
+            return content.split("```javascript")[1].split("```")[0].strip()
         elif "```" in content:
             return content.split("```")[1].split("```")[0].strip()
         return content
@@ -158,8 +171,20 @@ Return ONLY a JSON array: [{{"aspect": "...", "query": "..."}}, ...]""",
 
         try:
             llm = self._get_llm()
-            response = llm.invoke(config["prompt"].format(question=question))
-            sub_queries_data = json.loads(self._extract_json(str(response.content)))
+            prompt_text = config["prompt"].format(question=question)
+            
+            if self.is_hf:
+                response = llm.chat_completion(
+                    messages=[{"role": "user", "content": prompt_text}],
+                    model=self.model_name,
+                    max_tokens=500
+                )
+                content = response.choices[0].message.content
+            else:
+                response = llm.invoke(prompt_text)
+                content = str(response.content)
+            
+            sub_queries_data = json.loads(self._extract_json(content))
             return [
                 SubQuery(aspect=sq["aspect"], query=sq["query"], strategy=config["strategy"])
                 for sq in sub_queries_data
@@ -231,11 +256,14 @@ Return ONLY a JSON array: [{{"aspect": "...", "query": "..."}}, ...]""",
         return plan
 
 
-def decompose_question(question: str, question_type: str, cache_dir: Optional[Path] = None) -> DecompositionPlan:
+def decompose_question(
+    question: str, 
+    question_type: str, 
+    cache_dir: Optional[Path] = None,
+    model_name: Optional[str] = None
+) -> DecompositionPlan:
     """Convenience function to decompose a single question."""
-
-
-    return QueryDecomposer(cache_dir=cache_dir).decompose(question, question_type)
+    return QueryDecomposer(model_name=model_name, cache_dir=cache_dir).decompose(question, question_type)
 
 
 if __name__ == "__main__":

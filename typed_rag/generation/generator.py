@@ -82,7 +82,7 @@ class TypedAnswerGenerator:
         temperature: float = 0.2,
         use_llm: bool = True,
     ) -> None:
-        self.model_name = get_fastest_model()  or model_name
+        self.model_name = model_name or get_fastest_model()
         self.is_hf = "/" in self.model_name
         self.cache_dir = Path(cache_dir or "./cache/answers")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -100,7 +100,10 @@ class TypedAnswerGenerator:
                 hf_token = os.getenv("HF_TOKEN")
                 if not hf_token:
                     raise EnvironmentError("HF_TOKEN not set")
-                self._llm = InferenceClient(token=hf_token)
+                self._llm = InferenceClient(
+                    model=self.model_name,
+                    token=hf_token
+                )
             else:
                 google_api_key = os.getenv("GOOGLE_API_KEY")
                 if not google_api_key:

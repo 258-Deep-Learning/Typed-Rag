@@ -155,8 +155,9 @@ def main():
             
             # Rate limit for Gemini API (15 RPM = 4 seconds between requests)
             # Note: Typed-RAG makes multiple LLM calls per question, so we need more conservative timing
-            if not is_hf and elapsed < 6.0:
-                time.sleep(6.5 - elapsed)
+            # Increased to 30s to avoid quota exhaustion (was 6.5s)
+            if not is_hf and elapsed < 30.0:
+                time.sleep(30.5 - elapsed)
             
             # Extract aspect answers if available
             aspects = []
