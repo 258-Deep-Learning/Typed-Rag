@@ -270,12 +270,13 @@ class TypedAnswerGenerator:
         aspects: List[AspectAnswer] = []
         for aspect_ev in evidence_bundle.evidence:
             if self.use_llm:
+                # Always use LLM - no fallback for fair comparison with RAG baseline
+                prompt = self._build_prompt(
+                    plan.original_question,
+                    plan.question_type,
+                    aspect_ev,
+                )
                 try:
-                    prompt = self._build_prompt(
-                        plan.original_question,
-                        plan.question_type,
-                        aspect_ev,
-                    )
                     raw_answer = self._invoke_llm(prompt)
                     if not raw_answer:
                         raise RuntimeError("LLM returned empty answer")
@@ -290,12 +291,14 @@ class TypedAnswerGenerator:
                             sources=sources,
                         )
                     )
-                    continue
                 except Exception as exc:
-                    print(f"Warning: aspect generation failed ({aspect_ev.aspect}): {exc}")
-            # Fallback path
-            fallback = self._fallback_answer(aspect_ev)
-            aspects.append(fallback)
+                    # Re-raise exception instead of using fallback for transparent evaluation
+                    print(f"Error: aspect generation failed ({aspect_ev.aspect}): {exc}")
+                    raise
+            else:
+                # Only use fallback when LLM is explicitly disabled
+                fallback = self._fallback_answer(aspect_ev)
+                aspects.append(fallback)
 
         generated = GeneratedAnswer(
             question_id=plan.question_id,
