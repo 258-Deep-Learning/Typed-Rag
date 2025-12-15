@@ -379,7 +379,7 @@ class QueryEngine:
         # Typed pipeline steps
         # Step 1: Classification (can be disabled for ablation)
         if use_classification:
-            question_type = classify_question(question, use_llm=use_llm)
+            question_type = classify_question(question, use_llm=use_llm, model_name=model_name)
         else:
             # Ablation: force Evidence-based (fallback type)
             question_type = "Evidence-based"
@@ -390,17 +390,18 @@ class QueryEngine:
                 question,
                 question_type,
                 cache_dir=self.config.repo_root / "cache" / "decomposition",
+                model_name=model_name,
             )
         else:
             # Ablation: create minimal plan with single aspect (full question)
-            from typed_rag.decompose.query_decompose import TypedPlan, SubQuery
+            from typed_rag.decompose.query_decompose import DecompositionPlan, SubQuery
             import hashlib
             question_id = hashlib.md5(question.encode()).hexdigest()[:12]
-            plan = TypedPlan(
+            plan = DecompositionPlan(
                 question_id=question_id,
-                question=question,
+                original_question=question,
                 question_type=question_type,
-                sub_queries=[SubQuery(aspect="full_question", query=question)],
+                sub_queries=[SubQuery(aspect="full_question", query=question, strategy="evidence")],
             )
 
         # Step 3: Retrieval (can be disabled for ablation)
@@ -423,9 +424,9 @@ class QueryEngine:
             from typed_rag.retrieval.orchestrator import EvidenceBundle
             bundle = EvidenceBundle(
                 question_id=plan.question_id,
-                question=plan.question,
+                original_question=plan.original_question,
                 question_type=plan.question_type,
-                aspect_evidence={},
+                evidence=[],
             )
 
         generator = TypedAnswerGenerator(

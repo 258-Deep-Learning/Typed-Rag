@@ -82,7 +82,7 @@ class TypedAnswerGenerator:
         temperature: float = 0.2,
         use_llm: bool = True,
     ) -> None:
-        self.model_name = get_fastest_model()  or model_name
+        self.model_name = model_name or get_fastest_model()
         self.is_hf = "/" in self.model_name
         self.cache_dir = Path(cache_dir or "./cache/answers")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -100,7 +100,10 @@ class TypedAnswerGenerator:
                 hf_token = os.getenv("HF_TOKEN")
                 if not hf_token:
                     raise EnvironmentError("HF_TOKEN not set")
-                self._llm = InferenceClient(token=hf_token)
+                self._llm = InferenceClient(
+                    model=self.model_name,
+                    token=hf_token
+                )
             else:
                 google_api_key = os.getenv("GOOGLE_API_KEY")
                 if not google_api_key:
@@ -267,12 +270,13 @@ class TypedAnswerGenerator:
         aspects: List[AspectAnswer] = []
         for aspect_ev in evidence_bundle.evidence:
             if self.use_llm:
+                # Always use LLM - no fallback for fair comparison with RAG baseline
+                prompt = self._build_prompt(
+                    plan.original_question,
+                    plan.question_type,
+                    aspect_ev,
+                )
                 try:
-                    prompt = self._build_prompt(
-                        plan.original_question,
-                        plan.question_type,
-                        aspect_ev,
-                    )
                     raw_answer = self._invoke_llm(prompt)
                     if not raw_answer:
                         raise RuntimeError("LLM returned empty answer")
@@ -287,12 +291,14 @@ class TypedAnswerGenerator:
                             sources=sources,
                         )
                     )
-                    continue
                 except Exception as exc:
-                    print(f"Warning: aspect generation failed ({aspect_ev.aspect}): {exc}")
-            # Fallback path
-            fallback = self._fallback_answer(aspect_ev)
-            aspects.append(fallback)
+                    # Re-raise exception instead of using fallback for transparent evaluation
+                    print(f"Error: aspect generation failed ({aspect_ev.aspect}): {exc}")
+                    raise
+            else:
+                # Only use fallback when LLM is explicitly disabled
+                fallback = self._fallback_answer(aspect_ev)
+                aspects.append(fallback)
 
         generated = GeneratedAnswer(
             question_id=plan.question_id,
