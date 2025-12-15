@@ -138,43 +138,69 @@ def main():
     # Create output directory
     args.output.parent.mkdir(parents=True, exist_ok=True)
     
+    # Load existing results if resuming
+    processed_ids = set()
+    if args.output.exists():
+        print(f"\n📂 Found existing output file, loading...")
+        with open(args.output, "r") as f:
+            for line in f:
+                result = json.loads(line.strip())
+                processed_ids.add(result["question_id"])
+        print(f"   ✓ Already processed {len(processed_ids)} questions, resuming...")
+    
     # Process questions
     results = []
     total_time = 0
+    skipped = 0
     
     print(f"\n🚀 Generating answers...")
     print("-"*60)
     
     for i, q in enumerate(questions, 1):
+        # Skip if already processed
+        if q.question_id in processed_ids:
+            skipped += 1
+            print(f"[{i}/{len(questions)}] ⏭️  Skipping (already processed): {q.question[:60]}...")
+            continue
+            
         print(f"[{i}/{len(questions)}] {q.category}: {q.question[:60]}...")
         
-        start = time.time()
-        answer = generate_answer_llm_only(q.question, llm, is_hf=is_hf)
-        elapsed = time.time() - start
-        total_time += elapsed
-        
-        # Rate limiting for Gemini (15 RPM limit)
-        if not is_hf and elapsed < 4.0:
-            time.sleep(4.5 - elapsed)
-        
-        result = {
-            "question_id": q.question_id,
-            "question": q.question,
-            "category": q.category,
-            "answer": answer,
-            "system": "llm_only",
-            "model": model_name,
-            "latency": elapsed
-        }
-        results.append(result)
-        
-        print(f"  ✓ Generated in {elapsed:.2f}s")
+        try:
+            start = time.time()
+            answer = generate_answer_llm_only(q.question, llm, is_hf=is_hf)
+            elapsed = time.time() - start
+            total_time += elapsed
+            
+            result = {
+                "question_id": q.question_id,
+                "question": q.question,
+                "category": q.category,
+                "answer": answer,
+                "system": "llm_only",
+                "model": model_name,
+                "latency": elapsed
+            }
+            results.append(result)
+            
+            # Save immediately (append mode)
+            with open(args.output, "a") as f:
+                f.write(json.dumps(result) + "\n")
+            
+            print(f"  ✓ Generated in {elapsed:.2f}s (saved)")
+            
+            # Rate limiting for Gemini (15 RPM limit)
+            if not is_hf and elapsed < 4.0:
+                time.sleep(4.5 - elapsed)
+                
+        except Exception as e:
+            print(f"  ❌ Error: {str(e)[:100]}")
+            print(f"  Progress saved. You can resume by running the same command.")
+            raise
     
-    # Save results
-    print(f"\n💾 Saving results to: {args.output}")
-    with open(args.output, "w") as f:
-        for result in results:
-            f.write(json.dumps(result) + "\n")
+    # Summary message
+    if skipped > 0:
+        print(f"\n📊 Skipped {skipped} already-processed questions")
+    print(f"💾 All results saved to: {args.output}")
     
     # Summary
     print("\n" + "="*60)

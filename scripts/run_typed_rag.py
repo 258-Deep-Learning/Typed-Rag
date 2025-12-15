@@ -126,14 +126,31 @@ def main():
     artifacts_dir = Path("output/batch_run")
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     
+    # Load existing results if resuming
+    processed_ids = set()
+    if args.output.exists():
+        print(f"\n📂 Found existing output file, loading...")
+        with open(args.output, "r") as f:
+            for line in f:
+                result = json.loads(line.strip())
+                processed_ids.add(result["question_id"])
+        print(f"   ✓ Already processed {len(processed_ids)} questions, resuming...")
+    
     # Process questions
     results = []
     total_time = 0
+    skipped = 0
     
     print(f"\n🚀 Running Typed-RAG pipeline...")
     print("-"*60)
     
     for i, q in enumerate(questions, 1):
+        # Skip if already processed
+        if q.question_id in processed_ids:
+            skipped += 1
+            print(f"[{i}/{len(questions)}] ⏭️  Skipping (already processed): {q.question[:60]}...")
+            continue
+            
         print(f"[{i}/{len(questions)}] {q.category}: {q.question[:60]}...")
         
         start = time.time()
@@ -152,12 +169,6 @@ def main():
             
             elapsed = time.time() - start
             total_time += elapsed
-            
-            # Rate limit for Gemini API (15 RPM = 4 seconds between requests)
-            # Note: Typed-RAG makes multiple LLM calls per question, so we need more conservative timing
-            # Increased to 30s to avoid quota exhaustion (was 6.5s)
-            if not is_hf and elapsed < 30.0:
-                time.sleep(30.5 - elapsed)
             
             # Extract aspect answers if available
             aspects = []
@@ -183,13 +194,23 @@ def main():
             }
             results.append(output)
             
+            # Save immediately (append mode)
+            with open(args.output, "a") as f:
+                f.write(json.dumps(output) + "\n")
+            
             print(f"  ✓ Classified as: {output['classified_type']}")
             if aspects:
                 print(f"  ✓ Decomposed into {len(aspects)} aspects")
-            print(f"  ✓ Generated in {elapsed:.2f}s")
+            print(f"  ✓ Generated in {elapsed:.2f}s (saved)")
+            
+            # Rate limit for Gemini API (15 RPM = 4 seconds between requests)
+            # Note: Typed-RAG makes multiple LLM calls per question, so we need more conservative timing
+            # Increased to 30s to avoid quota exhaustion (was 6.5s)
+            if not is_hf and elapsed < 30.0:
+                time.sleep(30.5 - elapsed)
             
         except Exception as e:
-            print(f"  ✗ Failed: {str(e)}")
+            print(f"  ✗ Failed: {str(e)[:100]}")
             elapsed = time.time() - start
             total_time += elapsed
             
@@ -209,12 +230,18 @@ def main():
                 "error": str(e)
             }
             results.append(output)
+            
+            # Save failure too
+            with open(args.output, "a") as f:
+                f.write(json.dumps(output) + "\n")
+            
+            print(f"  Progress saved. You can resume by running the same command.")
+            # Don't raise - continue with next question
     
-    # Save results
-    print(f"\n💾 Saving results to: {args.output}")
-    with open(args.output, "w") as f:
-        for result in results:
-            f.write(json.dumps(result) + "\n")
+    # Summary message
+    if skipped > 0:
+        print(f"\n📊 Skipped {skipped} already-processed questions")
+    print(f"💾 All results saved to: {args.output}")
     
     # Summary
     successful = [r for r in results if "error" not in r]
