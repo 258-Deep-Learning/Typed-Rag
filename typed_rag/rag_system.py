@@ -406,11 +406,15 @@ class QueryEngine:
 
         # Step 3: Retrieval (can be disabled for ablation)
         if use_retrieval:
+            # Make evidence cache model-specific
+            model_slug = model_name.replace("/", "-").replace(":", "-")
+            evidence_cache_dir = self.config.repo_root / "cache" / "evidence" / model_slug
+            
             orchestrator = RetrievalOrchestrator(
                 embedder=embedder,
                 vector_store=vector_store,
                 vector_store_type=data_type.type,
-                cache_dir=self.config.repo_root / "cache" / "evidence",
+                cache_dir=evidence_cache_dir,
                 rerank=rerank,
             )
 

@@ -14,6 +14,11 @@ from typing import List, Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
 from huggingface_hub import InferenceClient
 
+try:
+    from langchain_groq import ChatGroq
+except ImportError:
+    ChatGroq = None
+
 from typed_rag.core.keys import get_fastest_model
 
 
@@ -99,8 +104,15 @@ Return ONLY a JSON array: [{{"aspect": "...", "query": "..."}}, ...]""",
 
     def __init__(self, model_name=None, cache_dir: Optional[Path] = None):
         self.model_name = model_name or get_fastest_model()
-        self.is_hf = "/" in self.model_name
-        self.cache_dir = Path(cache_dir) if cache_dir else Path("./cache/decomposition")
+        self.is_groq = self.model_name.startswith("groq/")
+        self.is_hf = "/" in self.model_name and not self.is_groq
+        
+        # Make cache model-specific
+        if cache_dir:
+            self.cache_dir = Path(cache_dir)
+        else:
+            model_slug = self.model_name.replace("/", "-").replace(":", "-")
+            self.cache_dir = Path(f"./cache/decomposition/{model_slug}")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._llm = None
 

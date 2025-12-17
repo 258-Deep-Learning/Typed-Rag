@@ -37,10 +37,20 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from huggingface_hub import InferenceClient
 
+try:
+    from langchain_groq import ChatGroq
+except ImportError:
+    ChatGroq = None
+
+
+def is_groq_model(model_name: str) -> bool:
+    """Check if model is from Groq."""
+    return model_name.startswith("groq/")
+
 
 def is_huggingface_model(model_name: str) -> bool:
     """Check if model is from HuggingFace."""
-    return "/" in model_name  # HF models have format "org/model-name"
+    return "/" in model_name and not model_name.startswith("groq/")  # HF models have format "org/model-name", but exclude groq/
 
 
 def create_passages_from_questions(questions: List[WikiNFQAQuestion], use_references: bool = False) -> List[Dict[str, Any]]:
@@ -117,7 +127,7 @@ def retrieve_context(question: str, vectorstore: FAISS, top_k: int = 3) -> str:
     return "\n\n".join(context_parts)
 
 
-def generate_answer_with_rag(question: str, context: str, llm, is_hf: bool = False) -> str:
+def generate_answer_with_rag(question: str, context: str, llm, is_hf: bool = False, is_groq: bool = False) -> str:
     """Generate answer using retrieved context."""
     prompt = f"""Answer the question based on the provided context. Be concise and factual.
 
@@ -135,6 +145,10 @@ Answer:"""
             max_tokens=500
         )
         return response.choices[0].message.content.strip()
+    elif is_groq:
+        # Groq API (similar to Gemini)
+        response = llm.invoke(prompt)
+        return response.content.strip()
     else:
         # Gemini API
         response = llm.invoke(prompt)
@@ -206,8 +220,27 @@ def main():
     print(f"📦 Loading model: {model_name}")
     
     is_hf = is_huggingface_model(model_name)
+    is_groq = is_groq_model(model_name)
     
-    if is_hf:
+    if is_groq:
+        # Groq model
+        if ChatGroq is None:
+            raise ImportError("langchain-groq not installed. Install with: pip install langchain-groq")
+        
+        groq_api_key = os.getenv("GROQ_API_KEY")
+        if not groq_api_key:
+            raise EnvironmentError("GROQ_API_KEY not set in .env file")
+        
+        # Strip the "groq/" prefix for the actual model name
+        actual_model_name = model_name.replace("groq/", "")
+        
+        llm = ChatGroq(
+            model=actual_model_name,
+            groq_api_key=groq_api_key,
+            temperature=0.0
+        )
+        print(f"✓ Using Groq API with model: {actual_model_name}")
+    elif is_hf:
         # HuggingFace model
         hf_token = os.getenv("HF_TOKEN")
         if not hf_token:
@@ -315,7 +348,7 @@ def main():
             context = retrieve_context(q.question, vectorstore, top_k=args.top_k)
             
             # Generate answer
-            answer = generate_answer_with_rag(q.question, context, llm, is_hf=is_hf)
+            answer = generate_answer_with_rag(q.question, context, llm, is_hf=is_hf, is_groq=is_groq)
             
             elapsed = time.time() - start
             total_time += elapsed
@@ -339,8 +372,8 @@ def main():
             
             print(f"  ✓ Retrieved {args.top_k} passages, generated in {elapsed:.2f}s (saved)")
             
-            # Rate limiting for Gemini (15 RPM limit)
-            if not is_hf and elapsed < 4.0:
+            # Rate limiting for Gemini (15 RPM limit) - skip for HF and Groq
+            if not is_hf and not is_groq and elapsed < 4.0:
                 time.sleep(4.5 - elapsed)
                 
         except Exception as e:

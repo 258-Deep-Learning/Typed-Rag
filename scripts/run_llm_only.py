@@ -31,13 +31,23 @@ from typed_rag.core.keys import get_fastest_model
 from langchain_google_genai import ChatGoogleGenerativeAI
 from huggingface_hub import InferenceClient
 
+try:
+    from langchain_groq import ChatGroq
+    GROQ_AVAILABLE = True
+except ImportError:
+    GROQ_AVAILABLE = False
+
 
 def is_huggingface_model(model_name: str) -> bool:
     """Check if model is from HuggingFace."""
-    return "/" in model_name  # HF models have format "org/model-name"
+    return "/" in model_name and not model_name.startswith("groq/")
+
+def is_groq_model(model_name: str) -> bool:
+    """Check if model is from Groq."""
+    return model_name.startswith("groq/")
 
 
-def generate_answer_llm_only(question: str, llm, is_hf: bool = False) -> str:
+def generate_answer_llm_only(question: str, llm, is_hf: bool = False, is_groq: bool = False) -> str:
     """Generate answer using only LLM, no retrieval."""
     prompt = f"""Answer the following question concisely and accurately.
 Do not make up information. If you're unsure, say so.
@@ -53,6 +63,10 @@ Answer:"""
             max_tokens=500
         )
         return response.choices[0].message.content.strip()
+    elif is_groq:
+        # Groq API (LangChain ChatGroq)
+        response = llm.invoke(prompt)
+        return response.content.strip()
     else:
         # Gemini API
         response = llm.invoke(prompt)
@@ -92,8 +106,26 @@ def main():
     print(f"\n📦 Loading model: {model_name}")
     
     is_hf = is_huggingface_model(model_name)
+    is_groq = is_groq_model(model_name)
     
-    if is_hf:
+    if is_groq:
+        # Groq model
+        if not GROQ_AVAILABLE:
+            raise ImportError("langchain-groq not installed. Run: pip install langchain-groq")
+        
+        groq_api_key = os.getenv("GROQ_API_KEY")
+        if not groq_api_key:
+            raise EnvironmentError("GROQ_API_KEY not set in .env file")
+        
+        # Strip "groq/" prefix for actual model name
+        actual_model = model_name.replace("groq/", "")
+        llm = ChatGroq(
+            model=actual_model,
+            api_key=groq_api_key,
+            temperature=0.0
+        )
+        print(f"✓ Using Groq API with model: {actual_model}")
+    elif is_hf:
         # HuggingFace model
         hf_token = os.getenv("HF_TOKEN")
         if not hf_token:
@@ -167,7 +199,7 @@ def main():
         
         try:
             start = time.time()
-            answer = generate_answer_llm_only(q.question, llm, is_hf=is_hf)
+            answer = generate_answer_llm_only(q.question, llm, is_hf=is_hf, is_groq=is_groq)
             elapsed = time.time() - start
             total_time += elapsed
             

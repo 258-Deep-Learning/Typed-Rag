@@ -12,6 +12,11 @@ from typing import List, Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
 from huggingface_hub import InferenceClient
 
+try:
+    from langchain_groq import ChatGroq
+except ImportError:
+    ChatGroq = None
+
 from typed_rag.decompose.query_decompose import DecompositionPlan
 from typed_rag.retrieval.orchestrator import AspectEvidence, EvidenceBundle
 
@@ -83,8 +88,15 @@ class TypedAnswerGenerator:
         use_llm: bool = True,
     ) -> None:
         self.model_name = model_name or get_fastest_model()
-        self.is_hf = "/" in self.model_name
-        self.cache_dir = Path(cache_dir or "./cache/answers")
+        self.is_groq = self.model_name.startswith("groq/")
+        self.is_hf = "/" in self.model_name and not self.is_groq
+        
+        # Make cache model-specific
+        if cache_dir:
+            self.cache_dir = Path(cache_dir)
+        else:
+            model_slug = self.model_name.replace("/", "-").replace(":", "-")
+            self.cache_dir = Path(f"./cache/answers/{model_slug}")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.max_snippets = max_snippets
         self.temperature = temperature
@@ -96,7 +108,19 @@ class TypedAnswerGenerator:
     # ------------------------------------------------------------------ #
     def _get_llm(self):
         if self._llm is None:
-            if self.is_hf:
+            if self.is_groq:
+                if ChatGroq is None:
+                    raise ImportError("langchain-groq not installed. Install with: pip install langchain-groq")
+                groq_api_key = os.getenv("GROQ_API_KEY")
+                if not groq_api_key:
+                    raise EnvironmentError("GROQ_API_KEY not set")
+                actual_model_name = self.model_name.replace("groq/", "")
+                self._llm = ChatGroq(
+                    model=actual_model_name,
+                    groq_api_key=groq_api_key,
+                    temperature=self.temperature,
+                )
+            elif self.is_hf:
                 hf_token = os.getenv("HF_TOKEN")
                 if not hf_token:
                     raise EnvironmentError("HF_TOKEN not set")
@@ -127,6 +151,9 @@ class TypedAnswerGenerator:
                 max_tokens=500
             )
             return response.choices[0].message.content.strip()
+        elif self.is_groq:
+            response = llm.invoke(prompt)
+            return str(getattr(response, "content", response)).strip()
         else:
             response = llm.invoke(prompt)
             return str(getattr(response, "content", response)).strip()

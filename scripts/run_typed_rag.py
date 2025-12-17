@@ -114,9 +114,12 @@ def main():
     # Setup data type
     data_type = DataType(args.backend, args.source)
     model_name = args.model if args.model else get_fastest_model()
-    is_hf = "/" in model_name
+    is_groq = model_name.startswith("groq/")
+    is_hf = "/" in model_name and not is_groq
     print(f"📦 Using model: {model_name}")
-    if is_hf:
+    if is_groq:
+        print(f"📦 Using Groq API")
+    elif is_hf:
         print(f"📦 Using HuggingFace Inference API")
     else:
         print(f"📦 Using Gemini API")
@@ -206,7 +209,8 @@ def main():
             # Rate limit for Gemini API (15 RPM = 4 seconds between requests)
             # Note: Typed-RAG makes multiple LLM calls per question, so we need more conservative timing
             # Increased to 30s to avoid quota exhaustion (was 6.5s)
-            if not is_hf and elapsed < 30.0:
+            # Skip for HF and Groq
+            if not is_hf and not is_groq and elapsed < 30.0:
                 time.sleep(30.5 - elapsed)
             
         except Exception as e:
