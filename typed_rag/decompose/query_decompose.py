@@ -118,7 +118,20 @@ Return ONLY a JSON array: [{{"aspect": "...", "query": "..."}}, ...]""",
 
     def _get_llm(self):
         if self._llm is None:
-            if self.is_hf:
+            if self.is_groq:
+                if ChatGroq is None:
+                    raise ImportError("langchain-groq not installed")
+                groq_api_key = os.getenv("GROQ_API_KEY")
+                if not groq_api_key:
+                    raise EnvironmentError("GROQ_API_KEY not set")
+                # Remove 'groq/' prefix for actual model name
+                actual_model = self.model_name.replace("groq/", "")
+                self._llm = ChatGroq(
+                    model=actual_model,
+                    groq_api_key=groq_api_key,
+                    temperature=0.3
+                )
+            elif self.is_hf:
                 hf_token = os.getenv("HF_TOKEN")
                 if not hf_token:
                     raise EnvironmentError("HF_TOKEN not set")

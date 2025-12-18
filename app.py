@@ -231,15 +231,30 @@ def generate_llm_only_answer(question: str, model_name: str) -> tuple[str, float
     """Generate answer using only LLM without retrieval."""
     start = time.time()
     
-    google_api_key = os.getenv("GOOGLE_API_KEY")
-    if not google_api_key:
-        return "Error: GOOGLE_API_KEY not set", 0.0
-    
-    llm = ChatGoogleGenerativeAI(
-        model=model_name,
-        google_api_key=google_api_key,
-        temperature=0.0
-    )
+    # Check if it's a Groq model
+    if model_name.startswith("groq/"):
+        from langchain_groq import ChatGroq
+        groq_api_key = os.getenv("GROQ_API_KEY")
+        if not groq_api_key:
+            return "Error: GROQ_API_KEY not set", 0.0
+        
+        actual_model = model_name.replace("groq/", "")
+        llm = ChatGroq(
+            model=actual_model,
+            groq_api_key=groq_api_key,
+            temperature=0.0
+        )
+    else:
+        # Google Gemini
+        google_api_key = os.getenv("GOOGLE_API_KEY")
+        if not google_api_key:
+            return "Error: GOOGLE_API_KEY not set", 0.0
+        
+        llm = ChatGoogleGenerativeAI(
+            model=model_name,
+            google_api_key=google_api_key,
+            temperature=0.0
+        )
     
     prompt = f"""Answer the following question concisely and accurately.
 Do not make up information. If you're unsure, say so.
@@ -334,7 +349,7 @@ def _render_query_interface():
         # Model selection
         model = st.selectbox(
             "Select Model:",
-            ["gemini-2.0-flash-lite"],
+            ["gemini-2.5-flash", "groq/llama-3.3-70b-versatile"],
             help="Language model to use for generation"
         )
         

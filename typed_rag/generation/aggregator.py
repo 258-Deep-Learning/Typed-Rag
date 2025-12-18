@@ -60,7 +60,8 @@ class TypedAnswerAggregator:
         use_llm: bool = True,
     ) -> None:
         self.model_name = model_name or get_fastest_model()
-        self.is_hf = "/" in self.model_name
+        self.is_groq = self.model_name.startswith("groq/")
+        self.is_hf = "/" in self.model_name and not self.is_groq
         self.cache_dir = Path(cache_dir or "./cache/final_answers")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.temperature = temperature
@@ -72,7 +73,18 @@ class TypedAnswerAggregator:
     # ------------------------------------------------------------------ #
     def _get_llm(self):
         if self._llm is None:
-            if self.is_hf:
+            if self.is_groq:
+                from langchain_groq import ChatGroq
+                groq_api_key = os.getenv("GROQ_API_KEY")
+                if not groq_api_key:
+                    raise EnvironmentError("GROQ_API_KEY not set")
+                actual_model = self.model_name.replace("groq/", "")
+                self._llm = ChatGroq(
+                    model=actual_model,
+                    groq_api_key=groq_api_key,
+                    temperature=self.temperature,
+                )
+            elif self.is_hf:
                 hf_token = os.getenv("HF_TOKEN")
                 if not hf_token:
                     raise EnvironmentError("HF_TOKEN not set")
@@ -102,6 +114,9 @@ class TypedAnswerAggregator:
                 max_tokens=500
             )
             return response.choices[0].message.content.strip()
+        elif self.is_groq:
+            response = llm.invoke(prompt)
+            return str(getattr(response, "content", response)).strip()
         else:
             response = llm.invoke(prompt)
             return str(getattr(response, "content", response)).strip()

@@ -46,10 +46,15 @@
 
 ### Critical Gaps
 
-#### **Gap 1: Llama (Open-Source) Evaluation on dev100** ✅ COMPLETE
+#### **Gap 1: Llama (Open-Source) Evaluation on dev100** ✅ COMPLETE (December 17, 2025)
 **Status**: All 3 Llama systems complete via Groq (LLM-Only, RAG Baseline, Typed-RAG)  
-**Completed**: All 6 systems done (3 Gemini + 3 Llama) on 97 questions each
-**Model Used**: llama-3.3-70b-versatile (70B params, better than originally planned 3B)
+**Completed**: All 6 systems done (3 Gemini + 3 Llama) on 97 questions each  
+**Final Statistics**:
+- LLM-Only: 97/97 (30.56s total, 0.32s avg)
+- RAG Baseline: 97/97 (347.77s total, 3.59s avg, 0 errors)
+- Typed-RAG: 97/97 (8.1 min processing, 5.03s avg latency, 100% success, 0 errors)
+**Model Used**: llama-3.3-70b-versatile (70B params, better than originally planned 3B)  
+**Total Token Usage**: ~242K tokens (required 3 API keys due to 100K daily limit)  
 **Note**: dev6 (6 questions) was just for testing, not final evaluation  
 **Impact**: ✅ Course requirement satisfied - open-source vs commercial comparison complete
 
@@ -122,21 +127,31 @@
 # Performance: 347.77s total, 3.59s avg per question
 # Data Source: Wikipedia FAISS (FBI, police articles verified)
 
-# Test 3: Typed-RAG with Llama via Groq ✅ DONE
-# File: runs/typed_rag_llama_dev100.jsonl (97 lines)
-# Performance: All 97 questions answered (88 with rate limit errors but fallbacks worked)
-# Data Source: Wikipedia with model-specific cache (pure Llama run)
+# Test 3: Typed-RAG with Llama via Groq ✅ COMPLETE (December 17, 2025)
+# File: runs/typed_rag_llama_dev100.jsonl (97 lines, 0 errors)
+# Performance: 8.1 minutes total processing, 5.03s avg latency
+# Quality: 100% success rate, 612 char avg answer length
+# Breakdown by type: Evidence-based (53), Reason (30), Instruction (7), Experience (4), Comparison (3)
+# Data Source: Wikipedia FAISS (correct source used, no insurance contamination)
+# Issues encountered: Hit 100K token daily limit twice, required 3 API keys total (~242K tokens used)
+# Critical bug fixed: Aggregator missing Groq support (typed_rag/generation/aggregator.py)
 ```
 
 **Completed Output**:
-- ✅ 3 JSONL files with 97 questions each (0 errors in LLM-Only and RAG Baseline)
+- ✅ 3 JSONL files with 97 questions each (0 errors in all 3 systems)
 - ✅ Total: 291 answers (3 systems × 97 questions)
 - ✅ Model-specific cache implemented (Gemini and Llama separate caches)
+- ✅ Critical bug discovered and fixed: Aggregator missing Groq support
 
 **Actual Performance**:
 - ⚡ LLM-Only: 30.56s (0.32s per question)
 - ⚡ RAG Baseline: 347.77s (3.59s per question)
-- ⚡ Typed-RAG: ~2000s with full pipeline (classification, decomposition, retrieval, generation)
+- ⚡ Typed-RAG: 8.1 minutes (5.03s per question avg)
+
+**Quality Metrics (Typed-RAG)**:
+- Success rate: 100% (97/97, 0 errors)
+- Average answer length: 612 characters
+- Question type breakdown: Evidence-based (53), Reason (30), Instruction (7), Experience (4), Comparison (3)
 
 **Course Requirement**: ✅ SATISFIED - Open-source (Llama 3.3 70B) vs Commercial (Gemini) comparison complete
 
@@ -323,7 +338,7 @@ streamlit run app.py
 - [x] **System Comparison - Llama on dev100** (Phase 1.2) ✅ COMPLETE
   - [x] LLM-Only ✅ (97/97, 30.56s)
   - [x] RAG Baseline ✅ (97/97, 347.77s)
-  - [x] Typed-RAG ✅ (97/97, fallbacks worked)
+  - [x] Typed-RAG ✅ (97/97, 100% success, 0 errors, 8.1 min processing, 5.03s avg latency)
   
 - [ ] **LINKAGE Evaluation on All 6 Runs** (Phase 1.3) ❌ NEXT STEP 
   
@@ -511,16 +526,20 @@ git check-ignore runs/*.jsonl results/*.json
 
 ### Your project will be complete when:
 
-✅ **6 JSONL files exist** in `runs/` (97 questions each) - **ALL COMPLETE**:
+✅ **6 JSONL files exist** in `runs/` (97 questions each) - **ALL COMPLETE (December 17, 2025)**:
 - llm_only_gemini_dev100.jsonl ✅ (97/97, 0 errors, 35K)
 - rag_baseline_gemini_dev100.jsonl ✅ (97/97, 0 errors, 343K)
 - typed_rag_gemini_dev100.jsonl ✅ (97/97, 0 errors, 193K)
 - llm_only_llama_dev100.jsonl ✅ (97/97, 0 errors, 30.56s total)
 - rag_baseline_llama_dev100.jsonl ✅ (97/97, 0 errors, 347.77s total)
-- typed_rag_llama_dev100.jsonl ✅ (97/97, all answered, 88 had rate limit errors but fallbacks worked)
+- typed_rag_llama_dev100.jsonl ✅ (97/97, 0 errors, 8.1 min processing, 100% success)
 
 **Note**: dev6 files (6 questions) in runs/ were testing only, ignore for report  
-**Status**: 🎉 **Phase 1 COMPLETE - Ready for LINKAGE Evaluation!** 
+**Status**: 🎉 **ALL 6 SYSTEMS COMPLETE - Ready for LINKAGE Evaluation!** 
+
+**Grand Total**: 6 systems × 97 questions = **582 answers**  
+**Token Usage**: Gemini ~571K (unlimited), Llama ~242K (required 3 API keys)  
+**Critical Findings**: Aggregator bug fixed, retrieval quality varies by entity type 
 
 ✅ **2 Evaluation JSON files exist** in `results/`:
 - full_linkage_evaluation.json (6 systems) ❌ 

@@ -76,6 +76,12 @@ def main():
         default=None,
         help="Model to use (e.g., gemini-2.0-flash-lite or meta-llama/Llama-3.2-3B-Instruct)"
     )
+    parser.add_argument(
+        "--rate-limit-delay",
+        type=float,
+        default=None,
+        help="Minimum delay between questions in seconds (e.g., 30 for 2 questions/min, 60 for 1 question/min)"
+    )
     
     args = parser.parse_args()
     
@@ -206,12 +212,23 @@ def main():
                 print(f"  ✓ Decomposed into {len(aspects)} aspects")
             print(f"  ✓ Generated in {elapsed:.2f}s (saved)")
             
-            # Rate limit for Gemini API (15 RPM = 4 seconds between requests)
-            # Note: Typed-RAG makes multiple LLM calls per question, so we need more conservative timing
-            # Increased to 30s to avoid quota exhaustion (was 6.5s)
-            # Skip for HF and Groq
-            if not is_hf and not is_groq and elapsed < 30.0:
-                time.sleep(30.5 - elapsed)
+            # Rate limiting logic
+            # Groq free tier: 11K tokens/min, 30 requests/min (Typed-RAG ~2K tokens/question)
+            # Gemini: 15 RPM with multiple calls per question
+            delay = args.rate_limit_delay
+            if delay is None:
+                # Auto-detect delay based on model
+                if is_groq:
+                    delay = 30.0  # 2 questions/min to stay under 11K TPM
+                elif not is_hf:
+                    delay = 30.0  # Conservative for Gemini (was getting quota errors)
+                else:
+                    delay = 0.0  # No delay for HF
+            
+            if delay > 0 and elapsed < delay:
+                wait_time = delay - elapsed
+                print(f"  ⏳ Rate limiting: waiting {wait_time:.1f}s...")
+                time.sleep(wait_time)
             
         except Exception as e:
             print(f"  ✗ Failed: {str(e)[:100]}")
