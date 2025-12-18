@@ -148,8 +148,8 @@ def load_evaluation_results(repo_root: Optional[Path] = None) -> Dict[str, Any]:
     results_dir = repo_root / "results"
     evaluation_data = {}
     
-    # Load linkage evaluation
-    linkage_path = results_dir / "linkage_evaluation.json"
+    # Load full linkage evaluation (all 12 systems)
+    linkage_path = results_dir / "full_linkage_evaluation.json"
     if linkage_path.exists():
         try:
             with open(linkage_path, 'r') as f:
@@ -303,18 +303,22 @@ def main():
     st.markdown('<div class="sub-header">Multi-Aspect Question Answering with Type-Aware Decomposition</div>', unsafe_allow_html=True)
     
     # Create tabs for different views
-    tab1, tab2, tab3 = st.tabs(["🔍 Query Interface", "📊 Evaluation Results", "🔬 Ablation Study"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🔍 Query Interface", "📊 System Evaluation", "🧩 Component Quality", "🔬 Ablation Study"])
     
     # Tab 1: Query Interface
     with tab1:
         _render_query_interface()
     
-    # Tab 2: Evaluation Results
+    # Tab 2: System Evaluation (LINKAGE metrics)
     with tab2:
-        _render_evaluation_results()
+        _render_system_evaluation()
     
-    # Tab 3: Ablation Study
+    # Tab 3: Component Quality Evaluation
     with tab3:
+        _render_component_evaluation()
+    
+    # Tab 4: Ablation Study
+    with tab4:
         _render_ablation_study()
 
 
@@ -349,7 +353,12 @@ def _render_query_interface():
         # Model selection
         model = st.selectbox(
             "Select Model:",
-            ["gemini-2.5-flash", "groq/llama-3.3-70b-versatile"],
+            [
+                "gemini-2.5-flash",
+                "gemini-2.0-flash-lite",
+                "groq/llama-3.3-70b-versatile",
+                "groq/llama-3.1-8b-instant"
+            ],
             help="Language model to use for generation"
         )
         
@@ -566,10 +575,103 @@ def _render_query_interface():
             st.info("💡 **Tip:** Try different question types to see how Typed-RAG adapts its decomposition strategy!")
 
 
-def _render_evaluation_results():
-    """Render evaluation metrics display."""
-    st.markdown("### 📊 Evaluation Results")
-    st.markdown("System performance metrics from evaluation runs.")
+def _render_system_evaluation():
+    """Render comprehensive system evaluation with LINKAGE metrics for all 12 systems."""
+    st.markdown("### 📊 System Evaluation (LINKAGE Metrics)")
+    st.markdown("""Comprehensive evaluation of all systems using **LINKAGE** framework:  
+    - **MRR** (Mean Reciprocal Rank): Position-aware accuracy metric  
+    - **MPR** (Mean Precision Rate): Percentage of questions with relevant answers  
+    """)
+    
+    repo_root = Path(__file__).parent
+    eval_data = load_evaluation_results(repo_root)
+    
+    if not eval_data or "linkage" not in eval_data:
+        st.info("No evaluation results found. Run: `python scripts/evaluate_linkage.py`")
+        return
+    
+    linkage = eval_data["linkage"]
+    
+    # Organize systems by model
+    model_groups = {
+        "Gemini 2.5 Flash": ["llm_only_gemini_dev100", "rag_baseline_gemini_dev100", "typed_rag_gemini_dev100"],
+        "Gemini 2.0 Flash-Lite": ["llm_only_gemini2lite_dev100", "rag_baseline_gemini2lite_dev100", "typed_rag_gemini2lite_dev100"],
+        "Llama 3.3 70B": ["llm_only_llama_dev100", "rag_baseline_llama_dev100", "typed_rag_llama_dev100"],
+        "Llama 3.1 8B": ["llm_only_llama31_8b_dev100", "rag_baseline_llama31_8b_dev100", "typed_rag_llama31_8b_dev100"]
+    }
+    
+    # Overall comparison table
+    st.markdown("#### 🏆 All Systems Comparison")
+    all_metrics = []
+    for model_name, systems in model_groups.items():
+        for system_key in systems:
+            if system_key in linkage and "overall" in linkage[system_key]:
+                overall = linkage[system_key]["overall"]
+                system_type = "LLM-Only" if "llm_only" in system_key else "RAG Baseline" if "rag_baseline" in system_key else "Typed-RAG"
+                all_metrics.append({
+                    "Model": model_name,
+                    "System": system_type,
+                    "MRR": overall.get("mrr", 0.0),
+                    "MPR (%)": overall.get("mpr", 0.0),
+                    "Questions": overall.get("questions", 0)
+                })
+    
+    if all_metrics:
+        df = pd.DataFrame(all_metrics)
+        st.dataframe(df.style.format({"MRR": "{:.4f}", "MPR (%)": "{:.2f}"}), use_container_width=True)
+    
+    # Per-model breakdown
+    st.markdown("---")
+    st.markdown("#### 📈 Per-Model Performance")
+    
+    for model_name, systems in model_groups.items():
+        with st.expander(f"🔸 {model_name}", expanded=False):
+            model_metrics = []
+            for system_key in systems:
+                if system_key in linkage and "overall" in linkage[system_key]:
+                    overall = linkage[system_key]["overall"]
+                    system_type = "LLM-Only" if "llm_only" in system_key else "RAG Baseline" if "rag_baseline" in system_key else "Typed-RAG"
+                    model_metrics.append({
+                        "System": system_type,
+                        "MRR": overall.get("mrr", 0.0),
+                        "MPR (%)": overall.get("mpr", 0.0)
+                    })
+            
+            if model_metrics:
+                cols = st.columns(3)
+                for i, metric in enumerate(model_metrics):
+                    with cols[i]:
+                        st.metric(
+                            metric["System"],
+                            f"MRR: {metric['MRR']:.4f}",
+                            f"MPR: {metric['MPR (%)']:.2f}%"
+                        )
+                
+                # Per-category breakdown
+                st.markdown("**By Question Category:**")
+                category_data = []
+                for system_key in systems:
+                    if system_key in linkage and "by_category" in linkage[system_key]:
+                        system_type = "LLM-Only" if "llm_only" in system_key else "RAG Baseline" if "rag_baseline" in system_key else "Typed-RAG"
+                        by_cat = linkage[system_key]["by_category"]
+                        for cat_name, cat_data in by_cat.items():
+                            category_data.append({
+                                "System": system_type,
+                                "Category": cat_name,
+                                "MRR": cat_data.get("mrr", 0.0),
+                                "MPR (%)": cat_data.get("mpr", 0.0),
+                                "Count": cat_data.get("count", 0)
+                            })
+                
+                if category_data:
+                    cat_df = pd.DataFrame(category_data)
+                    st.dataframe(cat_df.style.format({"MRR": "{:.4f}", "MPR (%)": "{:.2f}"}), use_container_width=True)
+
+
+def _render_component_evaluation():
+    """Render component-wise quality evaluation."""
+    st.markdown("### 🧩 Component Quality Evaluation")
+    st.markdown("Detailed analysis of individual Typed-RAG components: Classification, Decomposition, and Retrieval.")
     
     repo_root = Path(__file__).parent
     eval_data = load_evaluation_results(repo_root)
@@ -578,50 +680,24 @@ def _render_evaluation_results():
         st.info("No evaluation results found. Run evaluation scripts to generate results.")
         return
     
-    # Display linkage evaluation
-    if "linkage" in eval_data:
-        st.markdown("#### Linkage Evaluation (MRR & MPR)")
-        linkage = eval_data["linkage"]
-        
-        # Create comparison table
-        systems = []
-        metrics_data = []
-        
-        for system_name, system_data in linkage.items():
-            if isinstance(system_data, dict) and "overall" in system_data:
-                overall = system_data["overall"]
-                systems.append(system_name.replace("_", " ").title())
-                metrics_data.append({
-                    "System": system_name.replace("_", " ").title(),
-                    "MRR": overall.get("mrr", 0.0),
-                    "MPR": overall.get("mpr", 0.0),
-                    "Questions": overall.get("questions", 0)
-                })
-        
-        if metrics_data:
-            df = pd.DataFrame(metrics_data)
-            st.dataframe(df, width='stretch')
-            
-            # Display metrics in columns
-            if len(metrics_data) > 0:
-                cols = st.columns(len(metrics_data))
-                for i, metric in enumerate(metrics_data):
-                    with cols[i]:
-                        st.metric(
-                            metric["System"],
-                            f"MRR: {metric['MRR']:.3f}",
-                            f"MPR: {metric['MPR']:.1f}%"
-                        )
-    
     # Display classifier evaluation
     if "classifier" in eval_data:
-        st.markdown("#### Classifier Evaluation")
+        st.markdown("#### 🏷️ Question Classification")
+        st.markdown("Pattern-based classifier for question type detection (Evidence, Reason, Comparison, etc.)")
         classifier = eval_data["classifier"]
         
         if "pattern_only" in classifier:
             pattern_data = classifier["pattern_only"]
             if "accuracy" in pattern_data:
-                st.metric("Pattern-Based Accuracy", f"{pattern_data['accuracy']:.1%}")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Overall Accuracy", f"{pattern_data['accuracy']:.1%}")
+                with col2:
+                    if "macro_f1" in pattern_data:
+                        st.metric("Macro F1", f"{pattern_data['macro_f1']:.1%}")
+                with col3:
+                    if "weighted_f1" in pattern_data:
+                        st.metric("Weighted F1", f"{pattern_data['weighted_f1']:.1%}")
             
             if "per_type" in pattern_data:
                 st.markdown("**Per-Type Performance:**")
@@ -636,13 +712,75 @@ def _render_evaluation_results():
                     }
                     for qtype, data in type_data.items()
                 ])
-                st.dataframe(type_df, width='stretch')
+                st.dataframe(type_df.style.format({"Precision": "{:.3f}", "Recall": "{:.3f}", "F1": "{:.3f}"}), use_container_width=True)
+    else:
+        st.info("⚠️ Classification evaluation not found. Run: `python scripts/evaluate_classifier.py`")
     
-    # Display other evaluations
-    for eval_key in ["decomposition", "generation", "retrieval"]:
-        if eval_key in eval_data:
-            st.markdown(f"#### {eval_key.title()} Evaluation")
-            st.json(eval_data[eval_key])
+    st.markdown("---")
+    
+    # Display decomposition evaluation
+    if "decomposition" in eval_data:
+        st.markdown("#### 🔀 Question Decomposition")
+        st.markdown("Quality of breaking down complex questions into sub-queries.")
+        decomp = eval_data["decomposition"]
+        
+        if "overall" in decomp:
+            overall = decomp["overall"]
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Average Quality", f"{overall.get('avg_quality', 0.0):.2f}/5.0")
+            with col2:
+                st.metric("Questions Evaluated", overall.get("count", 0))
+            with col3:
+                st.metric("Excellent (5/5)", f"{overall.get('excellent_pct', 0.0):.1f}%")
+        
+        if "by_category" in decomp:
+            st.markdown("**By Question Category:**")
+            cat_data = decomp["by_category"]
+            cat_df = pd.DataFrame([
+                {
+                    "Category": cat,
+                    "Avg Quality": data.get("avg_quality", 0.0),
+                    "Count": data.get("count", 0)
+                }
+                for cat, data in cat_data.items()
+            ])
+            st.dataframe(cat_df.style.format({"Avg Quality": "{:.2f}"}), use_container_width=True)
+    else:
+        st.info("⚠️ Decomposition evaluation not found. Run: `python scripts/evaluate_decomposition.py`")
+    
+    st.markdown("---")
+    
+    # Display retrieval evaluation
+    if "retrieval" in eval_data:
+        st.markdown("#### 🔍 Document Retrieval")
+        st.markdown("Quality of retrieved evidence documents for answering questions.")
+        retrieval = eval_data["retrieval"]
+        
+        if "overall" in retrieval:
+            overall = retrieval["overall"]
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Average Quality", f"{overall.get('avg_quality', 0.0):.2f}/5.0")
+            with col2:
+                st.metric("Queries Evaluated", overall.get("count", 0))
+            with col3:
+                st.metric("High Quality (4-5)", f"{overall.get('high_quality_pct', 0.0):.1f}%")
+        
+        if "by_category" in retrieval:
+            st.markdown("**By Question Category:**")
+            cat_data = retrieval["by_category"]
+            cat_df = pd.DataFrame([
+                {
+                    "Category": cat,
+                    "Avg Quality": data.get("avg_quality", 0.0),
+                    "Count": data.get("count", 0)
+                }
+                for cat, data in cat_data.items()
+            ])
+            st.dataframe(cat_df.style.format({"Avg Quality": "{:.2f}"}), use_container_width=True)
+    else:
+        st.info("⚠️ Retrieval evaluation not found. Run: `python scripts/evaluate_retrieval.py`")
 
 
 def _render_ablation_study():
@@ -657,78 +795,112 @@ def _render_ablation_study():
         st.info("No ablation study results found. Run ablation study script to generate results.")
         return
     
-    # Display summary
-    if "summary" in ablation_data:
-        st.markdown("#### Performance Summary")
-        summary = ablation_data["summary"]
-        
-        variants = []
-        metrics = []
-        
-        if "variants" in summary:
-            for variant_name, variant_data in summary["variants"].items():
-                variants.append(variant_name.replace("_", " ").title())
-                metrics.append({
-                    "Variant": variant_name.replace("_", " ").title(),
-                    "Success Rate": f"{variant_data.get('successful', 0)}/{variant_data.get('total', 0)}",
-                    "Success %": f"{(variant_data.get('successful', 0) / max(variant_data.get('total', 1), 1)) * 100:.1f}%",
-                    "Avg Latency (s)": variant_data.get("avg_latency_seconds", 0.0)
-                })
-        
-        if metrics:
-            df = pd.DataFrame(metrics)
-            st.dataframe(df, width='stretch')
-            
-            # Visual comparison
-            cols = st.columns(len(metrics))
-            for i, metric in enumerate(metrics):
-                with cols[i]:
-                    st.metric(
-                        metric["Variant"],
-                        f"{metric['Avg Latency (s)']:.2f}s",
-                        metric["Success Rate"]
-                    )
-    
-    # Display linkage evaluation for ablation
+    # Display linkage evaluation for ablation (use this as primary data source)
     if "linkage" in ablation_data:
-        st.markdown("#### Quality Metrics (MRR & MPR)")
+        st.markdown("#### Performance Comparison")
+        st.markdown("""Ablation study evaluates the impact of removing key components.  
+        **Lower MRR/MPR** when a component is removed indicates that component is important.""")
+        
         linkage = ablation_data["linkage"]
         
         ablation_metrics = []
         for variant_name, variant_data in linkage.items():
             if isinstance(variant_data, dict) and "overall" in variant_data:
                 overall = variant_data["overall"]
+                # Map variant names to more descriptive labels
+                label_map = {
+                    "full": "✅ Full System (Baseline)",
+                    "no_classification": "❌ No Classification",
+                    "no_decomposition": "❌ No Decomposition",
+                    "no_retrieval": "❌ No Retrieval"
+                }
+                display_name = label_map.get(variant_name, variant_name.replace("_", " ").title())
+                
                 ablation_metrics.append({
-                    "Variant": variant_name.replace("_", " ").title(),
+                    "Variant": display_name,
                     "MRR": overall.get("mrr", 0.0),
-                    "MPR": overall.get("mpr", 0.0),
+                    "MPR (%)": overall.get("mpr", 0.0),
                     "Questions": overall.get("questions", 0)
                 })
         
         if ablation_metrics:
+            # Sort to show full system first
+            ablation_metrics.sort(key=lambda x: (0 if "Full" in x["Variant"] else 1, x["Variant"]))
+            
             df = pd.DataFrame(ablation_metrics)
-            st.dataframe(df, width='stretch')
+            st.dataframe(df.style.format({"MRR": "{:.4f}", "MPR (%)": "{:.2f}"}), width='stretch')
             
             # Display metrics in columns
             if len(ablation_metrics) > 0:
                 cols = st.columns(len(ablation_metrics))
                 for i, metric in enumerate(ablation_metrics):
                     with cols[i]:
-                        st.metric(
-                            metric["Variant"],
-                            f"MRR: {metric['MRR']:.3f}",
-                            f"MPR: {metric['MPR']:.1f}%"
-                        )
+                        # Calculate delta from full system if available
+                        if "Full" in metric["Variant"]:
+                            st.metric(
+                                metric["Variant"],
+                                f"{metric['MRR']:.4f}",
+                                f"{metric['Questions']} questions"
+                            )
+                        else:
+                            full_mrr = next((m["MRR"] for m in ablation_metrics if "Full" in m["Variant"]), metric["MRR"])
+                            delta = metric["MRR"] - full_mrr
+                            st.metric(
+                                metric["Variant"],
+                                f"{metric['MRR']:.4f}",
+                                f"{delta:+.4f} vs Full",
+                                delta_color="inverse"
+                            )
             
             # Key insights
-            st.markdown("#### Key Insights")
-            if len(ablation_metrics) >= 4:
-                full_mrr = next((m["MRR"] for m in ablation_metrics if m["Variant"] == "Full"), 0.0)
-                no_decomp_mrr = next((m["MRR"] for m in ablation_metrics if m["Variant"] == "No Decomposition"), 0.0)
+            st.markdown("---")
+            st.markdown("#### 📊 Component Impact Analysis")
+            
+            full_mrr = next((m["MRR"] for m in ablation_metrics if "Full" in m["Variant"]), None)
+            
+            if full_mrr is not None:
+                st.markdown(f"**Baseline (Full System)**: MRR = {full_mrr:.4f}")
                 
-                if full_mrr > 0 and no_decomp_mrr > 0:
-                    improvement = ((full_mrr - no_decomp_mrr) / no_decomp_mrr) * 100
-                    st.info(f"**Decomposition Impact**: Full system shows {improvement:.1f}% improvement in MRR over no-decomposition variant.")
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    no_class = next((m for m in ablation_metrics if "Classification" in m["Variant"]), None)
+                    if no_class:
+                        impact = ((full_mrr - no_class["MRR"]) / full_mrr) * 100
+                        st.metric(
+                            "Classification Impact",
+                            f"{impact:.1f}%",
+                            f"MRR drops to {no_class['MRR']:.4f}"
+                        )
+                
+                with col2:
+                    no_decomp = next((m for m in ablation_metrics if "Decomposition" in m["Variant"]), None)
+                    if no_decomp:
+                        impact = ((full_mrr - no_decomp["MRR"]) / full_mrr) * 100
+                        st.metric(
+                            "Decomposition Impact",
+                            f"{impact:.1f}%",
+                            f"MRR drops to {no_decomp['MRR']:.4f}"
+                        )
+                
+                with col3:
+                    no_retrieval = next((m for m in ablation_metrics if "Retrieval" in m["Variant"]), None)
+                    if no_retrieval:
+                        impact = ((full_mrr - no_retrieval["MRR"]) / full_mrr) * 100
+                        st.metric(
+                            "Retrieval Impact",
+                            f"{impact:.1f}%",
+                            f"MRR drops to {no_retrieval['MRR']:.4f}"
+                        )
+                
+                st.markdown("""
+                **Interpretation**:
+                - Higher percentage = Component is more critical to system performance
+                - Retrieval typically has the largest impact (evidence-based answering)
+                - Classification and Decomposition help optimize retrieval strategy
+                """)
+    else:
+        st.info("⚠️ No ablation results found. Run: `python scripts/run_ablation_study.py`")
 
 
 if __name__ == "__main__":
