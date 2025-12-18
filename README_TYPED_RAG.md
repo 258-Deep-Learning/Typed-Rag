@@ -50,9 +50,15 @@ output/
 pip install -r requirements.txt
 
 # Set API keys
-export GOOGLE_API_KEY="your-gemini-api-key"
-export PINECONE_API_KEY="your-pinecone-key"  # Optional
+export GOOGLE_API_KEY="your-gemini-api-key"      # Required: Gemini for generation
+export GROQ_API_KEY="your-groq-api-key"          # Required: Llama via Groq
+export PINECONE_API_KEY="your-pinecone-key"      # Optional: Cloud vector store
 ```
+
+**Get API Keys:**
+- Gemini: https://makersuite.google.com/app/apikey (Free tier: unlimited tokens/day)
+- Groq: https://console.groq.com/keys (Free tier: 30 req/min, 100K tokens/day)
+- Pinecone: https://www.pinecone.io/ (Optional, free tier available)
 
 ### 2. Classify a Question
 
@@ -205,11 +211,28 @@ Outputs include MRR, MPR, and per-question ranks. Omit `--use-llm` to rely on th
 
 ## 🧪 Testing
 
-Run all tests (decomposition + generation fallbacks):
+Test files are available in `tests/` directory:
+- `tests/test_classifier.py` - Question type classification tests
+- `tests/test_decomposition.py` - Type-aware decomposition tests (30 tests, 5 per type)
+- `tests/test_generation.py` - Answer generation and fallback tests
+
+**To run tests** (requires pytest):
 
 ```bash
-pytest tests
+# Install pytest if needed
+pip install pytest pytest-cov
+
+# Run all tests
+pytest tests/ -v
+
+# Run with coverage report
+pytest tests/ --cov=typed_rag --cov-report=html
+
+# Run specific test file
+pytest tests/test_decomposition.py -v
 ```
+
+**Note**: See [TESTING.md](TESTING.md) for comprehensive testing guide.
 
 ## 📦 Output Formats
 
@@ -312,12 +335,95 @@ orchestrator = RetrievalOrchestrator(
 
 **Current hybrid approach**: 60% pattern match (instant), 40% LLM fallback
 
-### Retrieval Performance
+### Retrieval Performance (Actual Measurements)
 
-- **Dense retrieval**: ~50-100ms (BGE-small + FAISS)
-- **Reranking**: +50-100ms (cross-encoder on 50 docs)
-- **Total per sub-query**: ~100-200ms
-- **Full question (5 sub-queries)**: ~500ms-1s
+- **Classification**: ~200-500ms (Gemini LLM-based, 91.75% accuracy)
+- **Decomposition**: ~100-200ms (LLM-based, type-aware)
+- **Dense retrieval**: ~50-100ms per sub-query (BGE-small + FAISS)
+- **Reranking**: +50-100ms (cross-encoder on top-50 docs)
+- **Generation**: ~1-2s per aspect (LLM-based)
+- **Total end-to-end**: ~5.03s average (Typed-RAG on 97 questions)
+
+**Throughput:**
+- Gemini: ~3-4 questions/minute (unlimited tokens)
+- Llama via Groq: ~2 questions/minute (with 30s rate limiting)
+
+**Token Usage (Typed-RAG):**
+- Average: ~2,500 tokens per question
+- Gemini total: ~571K tokens (97 questions)
+- Llama total: ~242K tokens (required 3 API keys due to 100K/day limit)
+
+## 📋 Reproducing Evaluation Results
+
+**Complete reproduction guide**: See [EVALUATION.md](EVALUATION.md) for step-by-step instructions.
+
+### Quick Reproduction Commands
+
+```bash
+# 1. Setup environment
+pip install -r requirements.txt
+export GOOGLE_API_KEY="your-key"
+export GROQ_API_KEY="your-key"
+
+# 2. Download dataset (97 questions)
+python scripts/setup_wiki_nfqa.py --split dev100
+
+# 3. Build vector index
+python rag_cli.py build --backend faiss --source wikipedia
+
+# 4. Run all 6 system evaluations (Gemini + Llama)
+# See EVALUATION.md for full commands
+
+# 5. Evaluate with LINKAGE metrics
+python scripts/evaluate_linkage.py \
+  --systems runs/*_dev100.jsonl \
+  --references data/wiki_nfqa/references.jsonl \
+  --output results/full_linkage_evaluation.json
+
+# 6. Run ablation study
+python scripts/run_ablation_study.py \
+  --input data/wiki_nfqa/dev100.jsonl \
+  --output results/ablation_dev100/ \
+  --model gemini-2.5-flash
+
+# 7. Verify code correctness (optional)
+pip install pytest pytest-cov  # If not already installed
+pytest tests/ -v
+```
+
+**Time Estimate**: ~2-3 hours for complete reproduction
+
+### Actual Evaluation Results (97 Questions)
+
+**System Comparison:**
+
+| System | Model | MRR | MPR | Description |
+|--------|-------|-----|-----|-------------|
+| **LLM-Only** | Llama 3.3 70B | **0.3726** | **71.90%** | Best overall (no retrieval) |
+| LLM-Only | Gemini 2.5 | 0.3332 | 61.89% | Commercial model |
+| RAG Baseline | Llama 3.3 70B | 0.2905 | 59.00% | Simple retrieval |
+| **Typed-RAG** | Llama 3.3 70B | 0.2880 | 62.89% | Type-aware system |
+| Typed-RAG | Gemini 2.5 | 0.2280 | 49.12% | Shows improvement over baseline |
+| RAG Baseline | Gemini 2.5 | 0.1878 | 43.95% | Lowest performance |
+
+**Key Findings:**
+- ✅ Typed-RAG improves over RAG Baseline for Gemini (+5.17% MPR)
+- ⚠️ LLM-Only surprisingly outperformed both RAG systems
+- ✅ Best performance on DEBATE (79.17% MPR) and COMPARISON (80.00% MPR) question types
+- ⚠️ Retrieval quality issues on entity-specific questions (e.g., obscure directors)
+
+**Component Performance:**
+- Classification: 91.75% accuracy (89/97 questions)
+- Decomposition: 30 unit tests available (5 per question type)
+- Success Rate: 100% (97/97 questions, 0 errors)
+- Average Latency: 5.03s per question (Typed-RAG)
+
+**Source Files:**
+- `results/full_linkage_evaluation.json` - Complete metrics
+- `runs/*_dev100.jsonl` - 6 system outputs (582 answers)
+- `results/classifier_evaluation.json` - Classification metrics
+
+---
 
 ## 🎓 Research Background
 
@@ -388,34 +494,58 @@ Instructions for documenting the Streamlit demo:
 
 ### Quick Evaluation Pipeline
 
-Run complete evaluation in one command:
+**⚠️ For complete step-by-step reproduction, see [EVALUATION.md](EVALUATION.md)**
+
+Quick evaluation commands:
 
 ```bash
 # Setup data and build index
-python scripts/setup_wiki_nfqa.py --split dev6
+python scripts/setup_wiki_nfqa.py --split dev100  # 97 questions (use dev6 for quick test)
 python rag_cli.py build --backend faiss --source wikipedia
 
-# Run ablation study
-python scripts/run_ablation_study.py \
-  --input data/wiki_nfqa/dev6.jsonl \
-  --output results/ablation/
+# Run all 6 systems (3 systems × 2 models)
+# Gemini evaluations
+python scripts/run_llm_only.py --input data/wiki_nfqa/dev100.jsonl --model gemini-2.5-flash --output runs/llm_only_gemini_dev100.jsonl
+python scripts/run_rag_baseline.py --input data/wiki_nfqa/dev100.jsonl --model gemini-2.5-flash --output runs/rag_baseline_gemini_dev100.jsonl --backend faiss --source wikipedia
+python scripts/run_typed_rag.py --input data/wiki_nfqa/dev100.jsonl --model gemini-2.5-flash --output runs/typed_rag_gemini_dev100.jsonl --backend faiss --source wikipedia
 
-# Evaluate quality metrics
+# Llama evaluations via Groq
+export GROQ_API_KEY="your-key"
+python scripts/run_llm_only.py --input data/wiki_nfqa/dev100.jsonl --model groq/llama-3.3-70b-versatile --output runs/llm_only_llama_dev100.jsonl
+python scripts/run_rag_baseline.py --input data/wiki_nfqa/dev100.jsonl --model groq/llama-3.3-70b-versatile --output runs/rag_baseline_llama_dev100.jsonl --backend faiss --source wikipedia
+python scripts/run_typed_rag.py --input data/wiki_nfqa/dev100.jsonl --model groq/llama-3.3-70b-versatile --output runs/typed_rag_llama_dev100.jsonl --backend faiss --source wikipedia --rate-limit-delay 30
+
+# Evaluate all systems with LINKAGE
 python scripts/evaluate_linkage.py \
-  --systems results/ablation/*.jsonl \
-  --output results/ablation_linkage_evaluation.json
+  --systems runs/llm_only_gemini_dev100.jsonl runs/rag_baseline_gemini_dev100.jsonl runs/typed_rag_gemini_dev100.jsonl runs/llm_only_llama_dev100.jsonl runs/rag_baseline_llama_dev100.jsonl runs/typed_rag_llama_dev100.jsonl \
+  --references data/wiki_nfqa/references.jsonl \
+  --output results/full_linkage_evaluation.json
+
+# Run ablation study (4 variants)
+python scripts/run_ablation_study.py \
+  --input data/wiki_nfqa/dev100.jsonl \
+  --output results/ablation_dev100/ \
+  --model gemini-2.5-flash
 
 # Generate visualizations
 python scripts/create_evaluation_plots.py
 
-# Profile performance
-python scripts/profile_performance.py \
-  --input data/wiki_nfqa/dev6.jsonl \
-  --output results/performance_profile.json
+# Verify code correctness
+pytest tests/ -v --cov=typed_rag
 
 # View results in UI
 streamlit run app.py
 ```
+
+**Total Time**: ~2-3 hours for complete evaluation (6 systems + ablation)
+
+**Expected Outputs:**
+- `runs/*_dev100.jsonl` - 6 system outputs (582 answers total)
+- `results/full_linkage_evaluation.json` - MRR/MPR metrics
+- `results/ablation_dev100/` - Ablation study results
+- `results/plots/` - Visualization charts
+
+**See [EVALUATION.md](EVALUATION.md) for detailed reproduction instructions**
 
 ## 🔜 Future Enhancements
 

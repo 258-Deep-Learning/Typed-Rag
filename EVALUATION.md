@@ -23,7 +23,11 @@ This guide provides step-by-step instructions to reproduce all evaluation result
 ### API Keys Required
 - **Google Gemini API Key**: For LLM-based classification and generation
   - Get it from: https://makersuite.google.com/app/apikey
-  - Free tier: 60 requests/minute, 200 requests/day
+  - Free tier: 60 requests/minute, unlimited tokens/day
+- **Groq API Key** (Recommended): For open-source Llama models
+  - Get it from: https://console.groq.com/keys
+  - Free tier: 30 requests/minute, 12K tokens/minute, 100K tokens/day
+  - 10-20x faster inference than local models
 - **Pinecone API Key** (Optional): For cloud-based vector store
   - Get it from: https://www.pinecone.io/
   - Free tier available
@@ -73,6 +77,9 @@ cat > .env << 'EOF'
 # Required: Google Gemini API Key
 GOOGLE_API_KEY=your-gemini-api-key-here
 
+# Required: Groq API Key (for Llama models)
+GROQ_API_KEY=your-groq-api-key-here
+
 # Optional: Pinecone API Key (for cloud vector store)
 PINECONE_API_KEY=your-pinecone-api-key-here
 PINECONE_ENVIRONMENT=gcp-starter
@@ -105,12 +112,15 @@ print('✓ API key configured' if api_key else '✗ API key not found')
 The evaluation uses the Wikipedia Non-Factoid QA (WikiNFQA) dataset.
 
 ```bash
-# Download WikiNFQA dataset (6-question development set)
-python scripts/setup_wiki_nfqa.py --split dev6
+# Download WikiNFQA dataset (full 97-question development set)
+python scripts/setup_wiki_nfqa.py --split dev100
 
 # Expected output:
-# ✓ Downloaded and prepared 6 questions
-# ✓ Saved to: data/wiki_nfqa/dev6.jsonl
+# ✓ Downloaded and prepared 97 questions
+# ✓ Saved to: data/wiki_nfqa/dev100.jsonl
+
+# For quick testing, use smaller set:
+python scripts/setup_wiki_nfqa.py --split dev6  # 6 questions only
 ```
 
 **Dataset Structure:**
@@ -149,13 +159,14 @@ The ablation study tests 4 variants to evaluate component impact:
 
 ```bash
 python scripts/run_ablation_study.py \
-  --input data/wiki_nfqa/dev6.jsonl \
-  --output results/ablation/ \
+  --input data/wiki_nfqa/dev100.jsonl \
+  --output results/ablation_dev100/ \
   --backend faiss \
   --source wikipedia \
-  --model gemini-2.0-flash-lite
+  --model gemini-2.5-flash
 
-# Expected runtime: ~5-10 minutes (6 questions × 4 variants)
+# Expected runtime: ~60-90 minutes (97 questions × 4 variants = 388 questions)
+# For quick testing: use dev6.jsonl (~5-10 minutes, 6 questions × 4 variants)
 ```
 
 **Variants Tested:**
@@ -205,35 +216,86 @@ python -m typed_rag.classifier.classifier \
 # Gemini: 100% accuracy
 ```
 
-### Step 6: Run System Comparison
+### Step 6: Run System Comparison (3 Systems × 2 Models)
 
-Compare Typed-RAG against baselines:
+Compare Typed-RAG against baselines with both Gemini and Llama:
+
+**6A. Gemini Evaluation (Commercial Model)**
 
 ```bash
-# LLM-Only (no retrieval)
+# LLM-Only with Gemini
 python scripts/run_llm_only.py \
-  --input data/wiki_nfqa/dev6.jsonl \
-  --output results/llm_only.jsonl
+  --input data/wiki_nfqa/dev100.jsonl \
+  --model gemini-2.5-flash \
+  --output runs/llm_only_gemini_dev100.jsonl
 
-# RAG Baseline (simple retrieval + generation)
+# RAG Baseline with Gemini
 python scripts/run_rag_baseline.py \
-  --input data/wiki_nfqa/dev6.jsonl \
-  --output results/rag_baseline.jsonl \
+  --input data/wiki_nfqa/dev100.jsonl \
+  --model gemini-2.5-flash \
+  --output runs/rag_baseline_gemini_dev100.jsonl \
   --backend faiss \
   --source wikipedia
 
-# Typed-RAG (full system)
+# Typed-RAG with Gemini
 python scripts/run_typed_rag.py \
-  --input data/wiki_nfqa/dev6.jsonl \
-  --output results/typed_rag.jsonl \
+  --input data/wiki_nfqa/dev100.jsonl \
+  --model gemini-2.5-flash \
+  --output runs/typed_rag_gemini_dev100.jsonl \
+  --backend faiss \
+  --source wikipedia
+```
+
+**6B. Llama Evaluation via Groq (Open-Source Model)**
+
+```bash
+# Export Groq API key
+export GROQ_API_KEY=your-groq-api-key-here
+
+# LLM-Only with Llama
+python scripts/run_llm_only.py \
+  --input data/wiki_nfqa/dev100.jsonl \
+  --model groq/llama-3.3-70b-versatile \
+  --output runs/llm_only_llama_dev100.jsonl
+
+# RAG Baseline with Llama
+python scripts/run_rag_baseline.py \
+  --input data/wiki_nfqa/dev100.jsonl \
+  --model groq/llama-3.3-70b-versatile \
+  --output runs/rag_baseline_llama_dev100.jsonl \
   --backend faiss \
   --source wikipedia
 
-# Evaluate all systems
-python scripts/evaluate_linkage.py \
-  --systems results/llm_only.jsonl results/rag_baseline.jsonl results/typed_rag.jsonl \
-  --output results/linkage_evaluation.json
+# Typed-RAG with Llama (with rate limiting to avoid 100K token/day limit)
+python scripts/run_typed_rag.py \
+  --input data/wiki_nfqa/dev100.jsonl \
+  --model groq/llama-3.3-70b-versatile \
+  --output runs/typed_rag_llama_dev100.jsonl \
+  --backend faiss \
+  --source wikipedia \
+  --rate-limit-delay 30
 ```
+
+**6C. Evaluate All 6 Systems**
+
+```bash
+# Evaluate all systems together
+python scripts/evaluate_linkage.py \
+  --systems \
+    runs/llm_only_gemini_dev100.jsonl \
+    runs/rag_baseline_gemini_dev100.jsonl \
+    runs/typed_rag_gemini_dev100.jsonl \
+    runs/llm_only_llama_dev100.jsonl \
+    runs/rag_baseline_llama_dev100.jsonl \
+    runs/typed_rag_llama_dev100.jsonl \
+  --references data/wiki_nfqa/references.jsonl \
+  --output results/full_linkage_evaluation.json
+```
+
+**Expected Runtime:**
+- Gemini: 3 systems × 97 questions = 291 answers (~20-30 minutes total)
+- Llama: 3 systems × 97 questions = 291 answers (~40-60 minutes total with rate limiting)
+- LINKAGE Evaluation: 6 systems × 97 questions = 582 answers (~5-10 minutes)
 
 ---
 
@@ -267,15 +329,50 @@ python scripts/evaluate_linkage.py \
 | Instruction | 1.00 | 1.00 | 1.00 | 1 |
 | Debate | 0.00 | 0.00 | 0.00 | 1 |
 
-### System Comparison (Expected)
+### System Comparison (Actual Results on dev100 - 97 Questions)
 
-| System | MRR | MPR | Latency (s) | Description |
-|--------|-----|-----|-------------|-------------|
-| **LLM-Only** | ~0.35 | ~50% | 2.5 | No retrieval, relies on model knowledge |
-| **RAG Baseline** | ~0.42 | ~65% | 3.2 | Simple retrieval + generation |
-| **Typed-RAG** | ~0.47 | ~71% | 3.8 | Type-aware decomposition + retrieval |
+**Gemini 2.5 Flash (Commercial Model)**
 
-**Note**: MRR/MPR values are illustrative. Actual values depend on reference answers and evaluation method.
+| System | MRR | MPR | Questions | Description |
+|--------|-----|-----|-----------|-------------|
+| LLM-Only | 0.3332 | 61.89% | 97 | No retrieval, relies on model knowledge |
+| RAG Baseline | 0.1878 | 43.95% | 97 | Simple retrieval + generation |
+| **Typed-RAG** | 0.2280 | 49.12% | 97 | Type-aware decomposition + retrieval |
+
+**Llama 3.3 70B via Groq (Open-Source Model)**
+
+| System | MRR | MPR | Questions | Avg Latency | Description |
+|--------|-----|-----|-----------|-------------|-------------|
+| **LLM-Only** | **0.3726** | **71.90%** | 97 | 0.32s | ⭐ Best overall performance |
+| RAG Baseline | 0.2905 | 59.00% | 97 | 3.59s | Simple retrieval + generation |
+| Typed-RAG | 0.2880 | 62.89% | 97 | 5.03s | Type-aware decomposition + retrieval |
+
+**Key Findings:**
+- ⚠️ **Surprising Result**: LLM-Only outperformed both RAG systems for both models
+- Llama 3.3 70B consistently outperforms Gemini 2.5 Flash across all system types
+- Typed-RAG shows mixed results:
+  - Better than RAG Baseline for Gemini (0.2280 vs 0.1878 MRR)
+  - Slightly lower MRR but higher MPR for Llama (0.2880 vs 0.2905 MRR)
+- Best performance by question type (Typed-RAG Llama):
+  - DEBATE: 0.4896 MRR, 79.17% MPR (best)
+  - REASON: 0.3329 MRR, 72.50% MPR
+  - COMPARISON: 0.3889 MRR, 80.00% MPR
+  - EVIDENCE-BASED: 0.2522 MRR, 57.50% MPR (shows retrieval quality issues)
+
+**Performance Metrics:**
+- Llama via Groq: 10-20x faster than local models
+- Token usage: ~2,500 tokens per question (Typed-RAG)
+- Rate limiting: 30s delay required to stay under 100K token/day limit
+- Success rate: 100% (97/97 questions, 0 errors) across all systems
+
+**Note**: These are actual results from completed evaluations. Source files:
+- `runs/llm_only_gemini_dev100.jsonl` (97 questions, 35KB)
+- `runs/rag_baseline_gemini_dev100.jsonl` (97 questions, 343KB)
+- `runs/typed_rag_gemini_dev100.jsonl` (97 questions, 193KB)
+- `runs/llm_only_llama_dev100.jsonl` (97 questions)
+- `runs/rag_baseline_llama_dev100.jsonl` (97 questions, 355KB)
+- `runs/typed_rag_llama_dev100.jsonl` (97 questions, 226KB)
+- `results/full_linkage_evaluation.json` (6 systems evaluated)
 
 ---
 

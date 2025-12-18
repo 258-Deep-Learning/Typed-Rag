@@ -373,6 +373,13 @@ class QueryEngine:
         paths = self.config.get_paths_for_source(data_type.source)
         self._validate_backend_requirements(data_type, paths)
 
+        # Create variant identifier for cache isolation (prevents ablation variants from sharing cache)
+        # Format: c{0|1}d{0|1}r{0|1} -> classification, decomposition, retrieval flags
+        # Example: "c1d1r1" (full), "c0d1r1" (no_classification), "c1d0r1" (no_decomposition)
+        import hashlib
+        variant_config = f"c{int(use_classification)}d{int(use_decomposition)}r{int(use_retrieval)}"
+        variant_hash = hashlib.md5(variant_config.encode()).hexdigest()[:8]
+
         embedder = BGEEmbedder()
         vector_store = self._load_vector_store(data_type, paths, embedder)
 
@@ -386,10 +393,11 @@ class QueryEngine:
         
         # Step 2: Decomposition (can be disabled for ablation)
         if use_decomposition:
+            decomp_cache = self.config.repo_root / "cache" / "decomposition" / variant_hash
             plan = decompose_question(
                 question,
                 question_type,
-                cache_dir=self.config.repo_root / "cache" / "decomposition",
+                cache_dir=decomp_cache,
                 model_name=model_name,
             )
         else:
@@ -406,9 +414,9 @@ class QueryEngine:
 
         # Step 3: Retrieval (can be disabled for ablation)
         if use_retrieval:
-            # Make evidence cache model-specific
+            # Make evidence cache model-specific AND variant-specific
             model_slug = model_name.replace("/", "-").replace(":", "-")
-            evidence_cache_dir = self.config.repo_root / "cache" / "evidence" / model_slug
+            evidence_cache_dir = self.config.repo_root / "cache" / "evidence" / model_slug / variant_hash
             
             orchestrator = RetrievalOrchestrator(
                 embedder=embedder,
@@ -433,16 +441,18 @@ class QueryEngine:
                 evidence=[],
             )
 
+        answer_cache = self.config.repo_root / "cache" / "answers" / variant_hash
         generator = TypedAnswerGenerator(
             model_name=model_name,
-            cache_dir=self.config.repo_root / "cache" / "answers",
+            cache_dir=answer_cache,
             use_llm=use_llm,
         )
         aspect_answers = generator.generate(plan, bundle)
 
+        final_cache = self.config.repo_root / "cache" / "final_answers" / variant_hash
         aggregator = TypedAnswerAggregator(
             model_name=model_name,
-            cache_dir=self.config.repo_root / "cache" / "final_answers",
+            cache_dir=final_cache,
             use_llm=use_llm,
         )
         final_answer = aggregator.aggregate(plan, aspect_answers)

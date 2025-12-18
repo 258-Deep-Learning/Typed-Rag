@@ -30,6 +30,7 @@ def run_ablation_variant(
     variant: str,
     data_type: DataType,
     model_name: str = None,
+    output_file: Path = None,
 ) -> list:
     """
     Run a specific ablation variant.
@@ -39,6 +40,7 @@ def run_ablation_variant(
         variant: One of ["full", "no_classification", "no_decomposition", "no_retrieval"]
         data_type: DataType configuration
         model_name: Model to use (defaults to gemini-2.0-flash-lite)
+        output_file: Path to save results incrementally (supports resume)
     
     Returns:
         List of results with answers and metadata
@@ -73,6 +75,25 @@ def run_ablation_variant(
     flags = config[variant]
     results = []
     
+    # Load existing results if resuming
+    completed_ids = set()
+    if output_file and output_file.exists():
+        print(f"📂 Found existing results, loading for resume...")
+        with open(output_file, "r", encoding="utf-8") as f:
+            for line in f:
+                result = json.loads(line)
+                results.append(result)
+                completed_ids.add(result["question_id"])
+        print(f"  ✓ Loaded {len(completed_ids)} completed questions")
+        
+        # Open file in append mode for incremental saves
+        output_handle = open(output_file, "a", encoding="utf-8")
+    elif output_file:
+        # Create new file
+        output_handle = open(output_file, "w", encoding="utf-8")
+    else:
+        output_handle = None
+    
     print(f"\n{'='*80}")
     print(f"Running Ablation Variant: {variant.upper()}")
     print(f"{'='*80}")
@@ -82,61 +103,84 @@ def run_ablation_variant(
     print(f"  - Retrieval: {'✓' if flags['use_retrieval'] else '✗'}")
     print()
     
-    for i, q in enumerate(questions, 1):
-        question_id = q.question_id
-        question = q.question
-        
-        print(f"[{i}/{len(questions)}] Processing: {question[:60]}...")
-        
-        start_time = time.time()
-        
-        try:
-            result = ask_typed_question(
-                query=question,
-                data_type=data_type,
-                model_name=model_name,
-                use_llm=True,
-                save_artifacts=False,
-                use_classification=flags["use_classification"],
-                use_decomposition=flags["use_decomposition"],
-                use_retrieval=flags["use_retrieval"],
-            )
+    try:
+        for i, q in enumerate(questions, 1):
+            question_id = q.question_id
+            question = q.question
             
-            elapsed = time.time() - start_time
+            # Skip if already completed
+            if question_id in completed_ids:
+                print(f"[{i}/{len(questions)}] Skipping (already completed): {question[:60]}...")
+                continue
             
-            # Format result
-            output = {
-                "question_id": question_id,
-                "question": question,
-                "answer": result.answer,  # Changed from final_answer
-                "question_type": result.question_type,
-                "aspects": [aspect["aspect"] for aspect in result.aspects] if result.aspects else [],
-                "num_aspects": len(result.aspects) if result.aspects else 0,
-                "latency_seconds": round(elapsed, 2),
-                "variant": variant,
-                "config": flags,
-            }
+            print(f"[{i}/{len(questions)}] Processing: {question[:60]}...")
             
-            # Add reference answers if available
-            if hasattr(q, 'reference_answers') and q.reference_answers:
-                output["reference_answers"] = q.reference_answers
+            start_time = time.time()
             
-            results.append(output)
-            print(f"  ✓ Completed in {elapsed:.2f}s")
+            try:
+                result = ask_typed_question(
+                    query=question,
+                    data_type=data_type,
+                    model_name=model_name,
+                    use_llm=True,
+                    save_artifacts=False,
+                    use_classification=flags["use_classification"],
+                    use_decomposition=flags["use_decomposition"],
+                    use_retrieval=flags["use_retrieval"],
+                )
+                
+                elapsed = time.time() - start_time
+                
+                # Format result
+                output = {
+                    "question_id": question_id,
+                    "question": question,
+                    "answer": result.answer,
+                    "question_type": result.question_type,
+                    "aspects": [aspect["aspect"] for aspect in result.aspects] if result.aspects else [],
+                    "num_aspects": len(result.aspects) if result.aspects else 0,
+                    "latency_seconds": round(elapsed, 2),
+                    "variant": variant,
+                    "config": flags,
+                }
+                
+                # Add reference answers if available
+                if hasattr(q, 'reference_answers') and q.reference_answers:
+                    output["reference_answers"] = q.reference_answers
+                
+                results.append(output)
+                
+                # Save incrementally
+                if output_handle:
+                    output_handle.write(json.dumps(output, ensure_ascii=False) + "\n")
+                    output_handle.flush()  # Ensure written to disk
+                
+                print(f"  ✓ Completed in {elapsed:.2f}s (saved)")
+                
+            except Exception as e:
+                print(f"  ✗ Error: {e}")
+                error_output = {
+                    "question_id": question_id,
+                    "question": question,
+                    "answer": None,
+                    "error": str(e),
+                    "variant": variant,
+                }
+                results.append(error_output)
+                
+                # Save errors too
+                if output_handle:
+                    output_handle.write(json.dumps(error_output, ensure_ascii=False) + "\n")
+                    output_handle.flush()
             
-        except Exception as e:
-            print(f"  ✗ Error: {e}")
-            results.append({
-                "question_id": question_id,
-                "question": question,
-                "answer": None,
-                "error": str(e),
-                "variant": variant,
-            })
-        
-        # Rate limiting
-        if i < len(questions):
-            time.sleep(4.0)  # Respect API limits
+            # Rate limiting
+            if i < len(questions):
+                time.sleep(4.0)  # Respect API limits
+    
+    finally:
+        # Always close the file handle
+        if output_handle:
+            output_handle.close()
     
     print(f"\n✓ Completed {variant} variant: {len([r for r in results if 'error' not in r])}/{len(questions)} successful")
     return results
@@ -151,8 +195,8 @@ def main():
     parser.add_argument("--backend", default="faiss", choices=["faiss", "pinecone"], help="Vector store backend")
     parser.add_argument("--model", default=None, help="Model name (e.g., meta-llama/Llama-3.2-3B-Instruct or gemini-2.0-flash-lite)")
     parser.add_argument("--variants", nargs="+", 
-                        default=["full", "no_classification", "no_decomposition", "no_retrieval"],
-                        help="Variants to run")
+                        default=["no_classification", "no_decomposition", "no_retrieval"],
+                        help="Variants to run (default: ablation variants only, excluding full)")
     
     args = parser.parse_args()
     
@@ -188,20 +232,18 @@ def main():
     all_results = {}
     
     for variant in args.variants:
+        # Define output file for this variant
+        output_file = output_dir / f"{variant}.jsonl"
+        
         results = run_ablation_variant(
             questions=questions,
             variant=variant,
             data_type=data_type,
             model_name=args.model,
+            output_file=output_file,
         )
         
-        # Save results
-        output_file = output_dir / f"{variant}.jsonl"
-        with open(output_file, "w", encoding="utf-8") as f:
-            for result in results:
-                f.write(json.dumps(result, ensure_ascii=False) + "\n")
-        
-        print(f"✓ Saved results to: {output_file}")
+        print(f"✓ Results saved to: {output_file}")
         all_results[variant] = results
     
     # Create summary
