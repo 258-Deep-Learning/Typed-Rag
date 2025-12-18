@@ -698,94 +698,47 @@ We conducted comprehensive evaluation using multiple metrics and datasets to val
 6.2 Ablation Study Results
 Objective: Measure the impact of each component (classification, decomposition, retrieval)
 Experimental Setup:
-Input: 6 questions from Wiki-NFQA dev set
-Model: Meta Llama 3.2 3B Instruct
+Input: 97 questions from Wiki-NFQA dev100 dataset
+Model: Groq Llama 3.1 8B Instant
 Backend: FAISS + Wikipedia passages
 Variants:
 Full Typed-RAG: All components enabled (baseline)
 No Classification: Forced to “Evidence-based” type
-No Decomposition: Single aspect query
-No Retrieval: Pure LLM generation
-6.2.1 Performance Metrics
-System Variant
-Success Rate
-Questions
-Avg Latency (s)
-Speedup
-Full Typed-RAG
-100%
-6/6
-3.81
-Baseline
-No Classification
-100%
-6/6
-2.81
-+26% faster
-No Decomposition
-100%
-6/6
-3.27
-+14% faster
-No Retrieval
-100%
-6/6
-5.62
--48% slower
-
-
-Key Findings:
-Classification Overhead: Adds ~1 second but enables type-aware decomposition
-Retrieval Benefit: Provides 48% speedup compared to pure LLM
-All Variants Stable: 100% success rate across all configurations
-6.2.2 Quality Metrics (LINKAGE Evaluation)
+No Decomposition: Single aspect query generation
+No Retrieval: Pure LLM generation without context
+6.2.1 Quality Metrics (LINKAGE Evaluation)
 System Variant
 MRR ↑
 MPR ↑
 Quality vs Baseline
-Full Typed-RAG
-0.4722
-70.83%
-Baseline
+Impact
+Full Typed-RAG (Baseline)
+0.3132
+63.64%
+-
+-
 No Classification
-0.4722
-70.83%
-✓ Same
+0.1925
+43.46%
+-31.5%
+Moderate
 No Decomposition
-0.4444
-66.67%
--6% worse
+0.1974
+41.92%
+-34.1%
+Moderate  
 No Retrieval
-0.4722
-70.83%
-✓ Same
+0.1023
+15.63%
+-75.4%
+**Severe**
+
 
 Key Findings:
-Decomposition Impact: Removing decomposition reduces quality by 6% (MRR: 0.47 → 0.44)
-Classification Impact: No direct quality impact (enables decomposition indirectly)
-Retrieval Impact: No quality impact but significantly faster
-6.2.3 Quality-to-Latency Trade-off Analysis
-We computed an efficiency ratio: Quality / Latency
-Variant
-MRR
-Latency (s)
-Efficiency (MRR/s)
-No Classification
-0.4722
-2.81
-0.168 ⭐ Best
-Full Typed-RAG
-0.4722
-3.81
-0.124
-No Decomposition
-0.4444
-3.27
-0.136
-No Retrieval
-0.4722
-5.62
-0.084
+**Retrieval is Critical**: Removing retrieval causes a 75.4% drop in performance (63.64% → 15.63% MPR), demonstrating that context grounding is essential for accurate answers.
+**Classification Matters**: Without question type classification, MPR drops by 31.5% (63.64% → 43.46%), showing that type-aware decomposition significantly improves answer quality.
+**Decomposition Impact**: Removing aspect-based decomposition reduces MPR by 34.1% (63.64% → 41.92%), indicating that breaking complex questions into sub-aspects helps retrieve more relevant evidence.
+**Component Synergy**: All three components contribute meaningfully. The full system achieves 63.64% MPR by combining type-aware classification, structured decomposition, and retrieval-grounded generation.
 
 Recommendation: For production systems, “No Classification” variant offers the best efficiency (26% faster with same quality)
 6.2.4 Per-Question Latency Breakdown
